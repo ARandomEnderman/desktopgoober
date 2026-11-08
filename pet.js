@@ -61,6 +61,24 @@
     }
     return best;
   }
+  // the screen under x (by column first: a point below a shorter screen's bottom still belongs to that screen)
+  function displayAtX(x, y) {
+    const col = displays.filter((d) => x >= d.x && x < d.x + d.width);
+    if (!col.length) return displayAt(x, y);
+    let best = col[0], bd = Infinity;
+    for (const d of col) { const dd = Math.max(d.y - y, 0, y - (d.y + d.height)); if (dd < bd) { bd = dd; best = d; } }
+    return best;
+  }
+  // another screen right next to this one on that side (−1 left, +1 right) that the body fits into at height bottomY:
+  // the edge between them is open (goober can hop, wander or be thrown across); other edges are walls
+  function neighbor(d, side, bottomY) {
+    for (const o of displays) {
+      if (o === d) continue;
+      const touch = side < 0 ? Math.abs(o.x + o.width - d.x) < 4 : Math.abs(o.x - (d.x + d.width)) < 4;
+      if (touch && (bottomY === undefined || (bottomY <= o.y + o.height + 2 && bottomY >= o.y))) return o;
+    }
+    return null;
+  }
   // the body's centre on screen, and where its edges are relative to the pivot (unrotated: used at rest / in flight)
   const centre = () => toScreen(250, 250);
   const edges = () => ({ top: (EXT.top - grab.y) * s, bottom: (EXT.bottom - grab.y) * s, left: (EXT.left - grab.x) * s, right: (EXT.right - grab.x) * s });
@@ -183,7 +201,8 @@
     const lean = P.self && !P.ground ? clamp(P.vx / 6000, -0.22, 0.22) : 0;
     P.rotV += (-60 * (P.rot - lean) - 11 * P.rotV) * dt; P.rot += P.rotV * dt;
     const d = displayAt(P.x, P.y), e = edges();
-    const floor = d.y + d.height - e.bottom, top = d.y - e.top, left = d.x - e.left - P.outL, right = d.x + d.width - e.right + P.outR;
+    const floor = d.y + d.height - e.bottom, top = d.y - e.top, bottomY = P.y + e.bottom;
+    const left = neighbor(d, -1, bottomY) ? -Infinity : d.x - e.left - P.outL, right = neighbor(d, 1, bottomY) ? Infinity : d.x + d.width - e.right + P.outR;
     if (S.gravity) {
       if (!P.ground) P.vy += G * dt;
       P.x += P.vx * dt; P.y += P.vy * dt;
@@ -200,8 +219,10 @@
       if (P.y > floor) { P.y = floor; P.vy *= -0.4; }
       if (P.y < top) { P.y = top; P.vy *= -0.4; }
     }
-    if (P.x < left) { P.x = left; P.vx *= -0.45; }
-    if (P.x > right) { P.x = right; P.vx *= -0.45; }
+    // walls: a throw bounces off; its own jump slides up the wall and carries on once it's above the ledge (the
+    // bottom edge of a shorter screen next door), so it can leap from right beside it onto the other screen
+    if (P.x < left) { P.x = left; if (!P.self) P.vx *= -0.45; }
+    if (P.x > right) { P.x = right; if (!P.self) P.vx *= -0.45; }
     if (Math.abs(P.vx) < 4) P.vx = 0;
   }
 
@@ -221,9 +242,11 @@
   const play = GooberPlay({
     g, P, G, now: nowS, size: () => SIZES[S.size], settings: () => S, toScreen,
     face: () => toScreen(SCREEN_C.x, SCREEN_C.y),
-    area: () => { const c = toScreen(SCREEN_C.x, SCREEN_C.y), d = displayAt(c.x, c.y);
+    // where the face centre can go on the screen it's on (or the screen at point pt), and which side edges are open
+    area: (pt) => { const c = pt || toScreen(SCREEN_C.x, SCREEN_C.y), d = pt ? displayAtX(c.x, c.y) : displayAt(c.x, c.y);
       return { left: d.x + (SCREEN_C.x - EXT.left) * s, right: d.x + d.width - (EXT.right - SCREEN_C.x) * s,
-        top: d.y + (SCREEN_C.y - EXT.top) * s, floor: d.y + d.height - (EXT.bottom - SCREEN_C.y) * s, screenL: d.x, screenR: d.x + d.width }; },
+        top: d.y + (SCREEN_C.y - EXT.top) * s, floor: d.y + d.height - (EXT.bottom - SCREEN_C.y) * s, screenL: d.x, screenR: d.x + d.width,
+        openL: !!neighbor(d, -1), openR: !!neighbor(d, 1) }; },
     jump, squash: (v) => { SQ.t = v; }, setOut: (l, r) => { P.outL = l; P.outR = r; },
     cursorTo: (x, y) => host.cursorTo && host.cursorTo(x, y), canSteal: () => !!init.canSteal,
     cursor: { get pos() { return cursor; }, vel: cursorVel, still: () => nowS() - cursorMoved,
@@ -236,6 +259,34 @@
     const h = new Date().getHours(), night = S.nightSleep && (h >= 23 || h < 7);
     light += ((night ? 0.02 : 0.6) - light) * Math.min(1, dt / 40);
     return light;
+  }
+
+  // ── watching the mouse: while you move it, goober mostly follows the cursor with its eyes (the engine glances there
+  // in its own calm way, a look every ~1 s). Every few seconds it decides again whether to keep watching or look
+  // off at its own things for a bit; how much it watches depends on the mood. A cursor close by is always watched.
+  // When the mouse has been still for a few seconds it goes back to its own business.
+  const WATCH = { shy: 0.45, sulky: 0.4, sleepy: 0.35, dreamy: 0.5, bored: 0.55, busy: 0.55, grumpy: 0.6, anxious: 0.7, calm: 0.7,
+    cozy: 0.6, curious: 0.95, playful: 0.95, hyper: 0.9, cuddly: 0.9, happy: 0.85, silly: 0.85, sassy: 0.75, proud: 0.75 };
+  const watch = { on: false, until: 0 };
+  function watchingCursor(now, dist) {
+    if (g.mode !== 'awake') return false;
+    if (now - cursorMoved > rrW(2.5, 4)) return false;                 // the mouse is resting: goober does its own thing
+    if (dist < SIZES[S.size] * 1.8) return true;                         // right next to it: can't not look
+    if (now > watch.until) { watch.on = Math.random() < (WATCH[g.mood] || 0.75); watch.until = now + (watch.on ? rrW(4, 9) : rrW(1.5, 4)); }
+    return watch.on;
+  }
+  function rrW(a, b) { return a + (b - a) * 0.5; }   // fixed midpoints: no flicker from re-rolling every frame
+  // keep the eyes on a point. The engine's own "someone in view" only looks once a second and not during its
+  // animations, which read as ignoring you; so between animations the gaze is set here, as soon as the point has
+  // moved a bit (small moves glide, big ones go through a blink like every big look), and the engine is told to hold it.
+  let lastFollow = 0;
+  function follow(now, seen) {
+    if (g.sense) g.sense.attnUntil = g.t + 0.4;
+    if (g.doing || typeof g._setGaze !== 'function' || !g.gaze) return;
+    const x = clamp(seen.x, -0.9, 0.9) * 0.85, y = clamp(seen.y, -0.8, 0.8) * 0.7, d = Math.hypot(x - g.gaze[0], y - g.gaze[1]);
+    if (d > 0.08 && now - lastFollow > 0.12) { lastFollow = now; g._setGaze(x, y, d > 0.6 ? 0.5 : 0); }
+    g.nextSac = g.t + 0.8;
+    if (!play.lookAt && typeof g.nextAct === 'number') g.nextAct = Math.max(g.nextAct, g.t + 1.5);   // no idle animations while it watches you
   }
 
   // ── main loop
@@ -252,7 +303,7 @@
     if (target) {
       const sc = toScreen(SCREEN_C.x, SCREEN_C.y), dx = target.x - sc.x, dy = target.y - sc.y;
       seen = { x: Math.tanh(dx / 450) * 1.25, y: Math.tanh(dy / 450) * 1.25 };
-      if (play.lookAt && g.sense) g.sense.attnUntil = g.t + 0.4;     // keep its eyes on it while it's after it
+      if (play.lookAt || watchingCursor(now, Math.hypot(dx, dy))) follow(now, seen);   // eyes on it
     }
     g.update(dt, { imu, light: lightNow(dt), seen, temp: 21, loud: 0, battery: 1 });
 
@@ -270,7 +321,7 @@
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__goober = { g, P, play, get grab() { return grab; } };   // for tools/check.js and tools/play.js
+  window.__goober = { g, P, play, watch, get grab() { return grab; } };   // for tools/check.js and tools/play.js
 
   // ── a pretend desktop for plain browsers (no Electron): the page is the screen, #win is the window
   function fakeHost() {
@@ -279,7 +330,13 @@
       roam: true, mousePlay: true, steal: true, x: null, y: null };
     const BOD = { black: ['#17181f', '#2a2c38'], white: ['#f4f1ea', '#ffffff'], pink: ['#ff8fb1', '#ffc2d4'], blue: ['#5b6cff', '#8f9bff'],
       green: ['#2bb673', '#6fe0a8'], orange: ['#ffb020', '#ffd27a'], purple: ['#8e5cff', '#bb9bff'] };
-    const area = () => [{ x: 0, y: 0, width: innerWidth, height: innerHeight - 44 }];
+    // ?screens=2: two screens side by side, the right one with a taller taskbar (a different floor), to try hopping across
+    const two = /screens=2/.test(location.search);
+    const area = () => two ? [{ x: 0, y: 0, width: Math.floor(innerWidth / 2), height: innerHeight - 44 }, { x: Math.floor(innerWidth / 2), y: 0, width: innerWidth - Math.floor(innerWidth / 2), height: innerHeight - 164 }]
+      : [{ x: 0, y: 0, width: innerWidth, height: innerHeight - 44 }];
+    if (two) { const sep = document.createElement('div'); sep.style.cssText = 'position:fixed;left:50%;top:0;bottom:0;width:2px;background:#ffffff30';
+      const bar = document.createElement('div'); bar.style.cssText = 'position:fixed;left:50%;right:0;bottom:44px;height:120px;background:#0b0d14e6;border-top:1px solid #ffffff14';
+      document.body.append(sep, bar); }
     // the page can't move the real cursor, so a stolen cursor is drawn (and the real one hidden while it's held)
     const fakeArrow = document.createElement('div'); let stolenUntil = 0;
     fakeArrow.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;border-left:9px solid #fff;border-top:7px solid transparent;border-bottom:7px solid transparent;transform-origin:0 0;filter:drop-shadow(0 1px 1px #000);pointer-events:none;z-index:20;display:none';

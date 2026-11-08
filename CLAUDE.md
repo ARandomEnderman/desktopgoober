@@ -25,6 +25,11 @@ computer within a few hours. Don't push half-finished work to main; check the wo
 `npm run dist` builds locally (Linux works in the cloud container).
 
 ## Verify before committing
+- **Always use the newest engine** (the user's rule): before every commit, update the main goober checkout (read only:
+  `git -C ../goober pull --ff-only`; attach `ARandomEnderman/goober` to the session if it isn't there) and run
+  `node tools/sync-engine.js`. `tools/check.js` fails while `engine/goober.js` differs from `../goober/sim/goober.js`.
+  The goober repo is private, so the release workflow can't fetch it itself; never commit anything else from it here.
+  Never write to the goober repo from desktopgoober work.
 - `node tools/check.js [out-dir]` and `node tools/play.js [out-dir]` (headless; `pet.html` opened in a plain browser
   fakes a desktop and draws a fake cursor when goober steals it). Both fail on page errors / missed behaviours.
 - Look at the screenshots for visual changes.

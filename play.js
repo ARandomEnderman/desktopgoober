@@ -36,12 +36,30 @@
 
     // ── body moves
     // a hop (or a glide when gravity is off) so the face centre lands at x (and, gliding, y). h = how high, px.
+    // Across an open edge onto the next screen too (it lands on that screen's floor, higher or lower).
     function hopTo(x, h, y) {
-      const C = X.face(), A = X.area(), G = X.G;
+      const C = X.face(), G = X.G, A0 = X.area();
+      let A = X.area({ x, y: C.y });
+      if (A.screenL !== A0.screenL && !(x < C.x ? A0.openL : A0.openR)) A = A0;   // a wall there: stay on this screen
       x = clamp(x, A.left, A.right);
       if (!X.settings().gravity) { const ty = y === undefined ? C.y : clamp(y, A.top, A.floor); X.jump((x - C.x) * 3.5, (ty - C.y) * 3.5); return; }
-      h = Math.max(12, h); const T = 2 * Math.sqrt((2 * h) / G);
+      const ty = A.screenL === A0.screenL ? C.y : A.floor;        // where the face ends up: same height, or the other floor
+      h = Math.max(12, h, C.y - ty + 30);
+      const T = Math.sqrt((2 * h) / G) + Math.sqrt((2 * (h + ty - C.y)) / G);
       X.jump((x - C.x) / T, -Math.sqrt(2 * G * h));
+    }
+    // a big leap over to the next screen (if there's one beside this one); false if there isn't
+    function leapToScreen(side) {
+      const A = X.area(), sz = X.size();
+      const sides = [A.openL ? -1 : 0, A.openR ? 1 : 0].filter(Boolean);
+      if (!sides.length) return false;
+      side = side && sides.indexOf(side) >= 0 ? side : pick(sides);
+      const B2 = X.area({ x: side < 0 ? A.screenL - 40 : A.screenR + 40, y: X.face().y });
+      const x = rr(B2.left + (B2.right - B2.left) * 0.15, B2.right - (B2.right - B2.left) * 0.15);
+      say('leaps to the other screen');
+      chain([{ x, h: rr(1.6, 2.8) * sz, crouch: 0.32, onLaunch: () => g.preview('excited', 1.1),
+        onLand: () => { X.squash(-0.28); if (free()) act(pick(['giggle.small', 'proudNod.1', 'lookAround', 'hop.1.joy'])); } }]);
+      return true;
     }
     // a leap whose top is at point q (so the face goes through it)
     function leapAt(q) {
@@ -86,13 +104,14 @@
       } else if (roll < 0.58) {                                    // boing boing in place
         say('boings'); if (free()) act(pick(['boing.2.quick', 'boing.3.quick', 'boing.2.easy']));
         chain([{ x: C.x, h: 0.3 * sz }, { x: C.x, h: 0.55 * sz, rest: 0.05 }, { x: C.x, h: 0.25 * sz }]);
-      } else if (roll < 0.74 && e > 0.6) {                         // a big leap somewhere else on the screen
+      } else if (roll < 0.74 && e > 0.6) {                         // a big leap somewhere else on the screen, or onto the next one
+        if ((A.openL || A.openR) && Math.random() < 0.4 && leapToScreen()) return;
         const x = rr(A.left, A.right), h = rr(1.2, 2.4) * sz;
         say('big leap');
         chain([{ x, h, crouch: 0.28, onLaunch: () => g.preview('excited', 0.9),
           onLand: () => { X.squash(-0.25); if (free()) act(pick(['giggle.small', 'proudNod.1', 'squishy.1.quick', 'hop.1.joy'])); } }]);
-      } else if (roll < 0.74 + 0.12 * (0.5 + skittish)) {          // go and peek in from the edge of the screen
-        peek();
+      } else if (roll < 0.74 + 0.12 * (0.5 + skittish) && peek() !== false) {   // go and peek in from the edge of the screen
+
       } else {                                                     // just looks around
         if (free()) act(pick(['lookAround', 'lookAroundSlow.2', 'stretch.small', 'wiggle']));
         say('looks around');
@@ -101,7 +120,10 @@
 
     // ── peek: hop to the nearest side, slide half out of the screen, look back in, come back later (or when you come near)
     function peek() {
-      const A = X.area(), C = X.face(), sz = X.size(), side = C.x - A.left < A.right - C.x ? -1 : 1;
+      const A = X.area(), C = X.face(), sz = X.size();
+      // only at an outer edge of the desktop (an edge with another screen beyond it isn't an edge to peek round)
+      if (A.openL && A.openR) return false;
+      const side = A.openL ? 1 : A.openR ? -1 : C.x - A.left < A.right - C.x ? -1 : 1;
       const edgeX = side < 0 ? A.left : A.right, list = []; let x = C.x;
       while (Math.abs(edgeX - x) > 2 && list.length < 9) { x += side * Math.min(sz * 0.9, Math.abs(edgeX - x)); list.push({ x, h: 0.25 * sz }); }
       say('goes to peek'); chain(list, () => { B.st = 'peek'; B.side = side; B.peekT = X.now() + rr(5, 12); B.slide = 0; });
@@ -157,14 +179,16 @@
           cd('pounce', rr(7, 22) / Math.max(0.4, energy()));
           say('pounces!');
           let caught = false;
+          const sneaky = (MISCHIEF[m] || 0.15) * (0.6 + 0.8 * feisty());
+          const willSteal = () => X.canSteal() && X.settings().steal && ready('steal') && Math.random() < sneaky;
           chain([{ at: () => ({ x: q.x, y: q.y }), crouch: rr(0.45, 0.8), wiggle: true, rest: 0.25,
             onLaunch: () => g.preview('focused', 0.5),
-            inAir: () => { if (!caught && cur.pos) { const F = X.face(); if (Math.hypot(cur.pos.x - F.x, cur.pos.y - F.y) < sz * 0.4) caught = true; } },
+            // caught it in mid-air: either a boop, or it grabs the cursor right there and carries it down
+            inAir: () => { if (!caught && cur.pos) { const F = X.face(); if (Math.hypot(cur.pos.x - F.x, cur.pos.y - F.y) < sz * 0.45) { caught = true; if (willSteal()) grab(cur.pos); } } },
             onLand: () => {
               if (!caught) { if (free()) act(pick(['pout.short.meek', 'huff', 'lookAround'])); say('missed'); return; }
-              const sneaky = (MISCHIEF[m] || 0.15) * (0.6 + 0.8 * feisty());
-              if (X.canSteal() && X.settings().steal && ready('steal') && Math.random() < sneaky) steal();
-              else { if (free()) act(pick(['giggle.small', 'hop.1.joy', 'squishy.1.quick', 'proudNod.1'])); say('boop!'); }
+              if (B.stealing) { runOff(); return; }
+              if (free()) act(pick(['giggle.small', 'hop.1.joy', 'squishy.1.quick', 'proudNod.1'])); say('boop!');
             } }]);
         }
         return true;
@@ -183,38 +207,55 @@
       return false;
     }
 
-    // ── steal the cursor: hold it on an arm tip and hop off with it; let go after a bit, or when you pull it back
-    function steal() {
+    // ── steal the cursor. It grabs it in mid-air the moment it catches it (the cursor slides onto the tip of an arm
+    // in ~0.2 s, no jump), carries it down, hops off with it, then tosses it away. Pull the mouse back to free it.
+    function grab(from) {
       const A = X.area(), C = X.face(), sz = X.size();
       const dir = C.x - A.left < sz * 3 ? 1 : A.right - C.x < sz * 3 ? -1 : (Math.random() < 0.5 ? -1 : 1);
       say('steals the cursor!'); cd('steal', rr(90, 240));
       if (free()) act(pick(['mischief', 'scheme']));
-      B.steal = { dir, t0: X.now(), sets: [], pull: 0, seen: null };
-      const list = []; let x = C.x;
-      for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) { x += dir * rr(0.7, 1.1) * sz; list.push({ x, h: rr(0.3, 0.6) * sz, rest: rr(0.1, 0.3) }); }
-      chain(list, () => letGo(true));
-      B.st = 'hopping'; B.stealing = true;
+      B.steal = { dir, t0: X.now(), from: { x: from.x, y: from.y }, sets: [], pull: 0, seen: null };
+      B.stealing = true; X.squash(-0.12); setTimeout(() => X.squash(0), 120);   // a little "got it!" squeeze
     }
+    function runOff() {                                           // after landing with it: hop away, then toss it
+      const C = X.face(), sz = X.size(), dir = B.steal.dir; let x = C.x;
+      const list = [];
+      for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) { x += dir * rr(0.7, 1.1) * sz; list.push({ x, h: rr(0.3, 0.6) * sz, rest: rr(0.1, 0.3) }); }
+      B.hops = list; B.then = () => letGo(true);
+    }
+    // where an arm tip is on screen (the arm on the side it's running to)
+    const armTip = (dir) => X.toScreen(dir > 0 ? 452 : 48, 196);
     function holdCursor() {
       const S = B.steal; if (!S) return;
-      const tip = X.toScreen(S.dir > 0 ? 452 : 48, 196), cur = X.cursor, t = X.now();
-      // you pulling it back: a real mouse moves relative to where goober last put it, so each new cursor reading is
-      // off by only your little bit of motion. Add those up (against the nearest recent position goober set, since
-      // a reading can be a frame or two old); a real tug of ~2 body widths frees it.
-      if (cur.pos && cur.pos !== S.seen && S.sets.length) {
+      const t = X.now(), cur = X.cursor, tip = armTip(S.dir), k = Math.min(1, (t - S.t0) / 0.22), e = k * k * (3 - 2 * k);
+      const to = { x: S.from.x + (tip.x - S.from.x) * e, y: S.from.y + (tip.y - S.from.y) * e };
+      // you pulling it back: a real mouse moves relative to where goober last put it, so each cursor reading is off
+      // by your bit of motion. Add those up against the nearest position goober set in the last 0.6 s (moving the
+      // cursor and reading it back both lag, more on Windows), ignoring the first half second and small wobble.
+      if (cur.pos && cur.pos !== S.seen && S.sets.length && t - S.t0 > 0.5) {
         S.seen = cur.pos;
         let dmin = Infinity; for (const q of S.sets) dmin = Math.min(dmin, Math.hypot(cur.pos.x - q.x, cur.pos.y - q.y));
-        if (dmin > 4) S.pull += dmin; else S.pull = Math.max(0, S.pull - 2);
-        if (S.pull > X.size() * 0.9) { letGo(false); return; }
+        if (dmin > 14) S.pull += dmin - 14; else S.pull = Math.max(0, S.pull - 4);
+        if (S.pull > X.size() * 1.2) { letGo(false); return; }
       }
-      X.cursorTo(tip.x, tip.y); S.sets.push({ x: tip.x, y: tip.y, t }); while (S.sets.length && t - S.sets[0].t > 0.15) S.sets.shift();
-      B.lookAt = tip;
+      X.cursorTo(to.x, to.y); S.sets.push({ x: to.x, y: to.y, t }); while (S.sets.length && t - S.sets[0].t > 0.6) S.sets.shift();
+      B.lookAt = to;
     }
     function letGo(done) {
       if (!B.steal) return;
-      B.steal = null; B.stealing = false;
-      if (done) { say('lets go'); if (free()) act(pick(['giggle.small', 'giggle', 'proudWink.wink', 'mischief'])); }
-      else { cancel(); say('you took it back'); if (free()) act(pick(['pout.short.grumpy', 'huff', 'pout.short.meek'])); }
+      const S = B.steal; B.steal = null; B.stealing = false;
+      if (done) {                                                 // toss it: the cursor flies off the arm and slows down
+        const tip = armTip(S.dir);
+        B.toss = { x: tip.x, y: tip.y, vx: S.dir * rr(900, 1400), vy: -rr(350, 650), t0: X.now() };
+        say('lets go'); if (free()) act(pick(['giggle.small', 'giggle', 'proudWink.wink', 'mischief']));
+      } else { cancel(); say('you took it back'); if (free()) act(pick(['pout.short.grumpy', 'huff', 'pout.short.meek'])); }
+    }
+    function stepToss(dt) {
+      const T = B.toss, A = X.area();
+      if (X.now() - T.t0 > 0.45) { B.toss = null; return; }
+      T.vy += 2200 * dt; T.vx *= Math.exp(-dt * 4); T.vy *= Math.exp(-dt * 2);
+      T.x = clamp(T.x + T.vx * dt, A.screenL + 2, A.screenR - 2); T.y += T.vy * dt;
+      X.cursorTo(T.x, T.y);
     }
 
     // ── every frame
@@ -226,6 +267,7 @@
         B.nextWhim = Math.max(B.nextWhim, t + rr(3, 6));
         return;
       }
+      if (B.toss) stepToss(dt);
       if (B.stealing) holdCursor();
       if (B.st === 'hopping') { stepChain(); return; }
       if (B.st === 'peek') { stepPeek(dt); return; }
@@ -233,6 +275,6 @@
       if (X.settings().mousePlay && mouseBits(dt)) return;
       if (X.settings().roam && t >= B.nextWhim) { B.nextWhim = t + rr(6, 20) / Math.max(0.25, energy()); whim(); }
     }
-    return { update, get lookAt() { return B.lookAt; }, get state() { return B.st; }, get stealing() { return !!B.stealing; }, B, peek, whim };
+    return { update, get lookAt() { return B.lookAt; }, get state() { return B.st; }, get stealing() { return !!B.stealing; }, B, peek, whim, grab, runOff, leapToScreen };
   };
 })(typeof window !== 'undefined' ? window : globalThis);

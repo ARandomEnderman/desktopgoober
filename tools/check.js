@@ -3,6 +3,10 @@
 // Prints the engine's log and fails on page errors. With out-dir, saves screenshots there.
 const path = require('path');
 const { chromium } = require('playwright');
+// the engine must be the newest goober.js: if a goober checkout sits next to this repo and its engine differs, fail
+{ const fs = require('fs'), src = path.join(__dirname, '../../goober/sim/goober.js'), dst = path.join(__dirname, '../engine/goober.js');
+  if (fs.existsSync(src) && !fs.readFileSync(src).equals(fs.readFileSync(dst))) {
+    console.log('ENGINE IS OLD: ../goober/sim/goober.js is different. Run: git -C ../goober pull --ff-only && node tools/sync-engine.js'); process.exit(1); } }
 (async () => {
   const out = process.argv[2] ? path.resolve(process.argv[2]) : null;
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1100, height: 700 } });

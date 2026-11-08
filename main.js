@@ -119,8 +119,9 @@ function buildMenu() {
     ...(process.platform === 'linux' ? [] : [{ label: 'Start with the computer', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin,
       click: (m) => app.setLoginItemSettings({ openAtLogin: m.checked }) }]),
     { type: 'separator' },
-    { label: 'Copy goober ID', click: () => clipboard.writeText(S.id || '') },
-    { label: 'Load goober ID from clipboard', click: () => send('loadId', clipboard.readText().trim()) },
+    // the clipboard is async since Electron 45 (readText/writeText return promises); await works on older ones too
+    { label: 'Copy goober ID', click: async () => { try { await clipboard.writeText(S.id || ''); } catch (e) { console.error(e); } } },
+    { label: 'Load goober ID from clipboard', click: async () => { try { send('loadId', String((await clipboard.readText()) || '').trim()); } catch (e) { console.error(e); } } },
     { label: 'Hatch a new goober…', click: () => send('reroll', 1) },
     { label: 'Bring back on screen', click: () => send('home', 1) },
     { type: 'separator' },

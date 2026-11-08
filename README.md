@@ -37,15 +37,16 @@ npm start
 
 ## What it does
 **By itself** (more or less often depending on its mood and personality): hops about in little chains, boings in
-place, takes big leaps across the screen, and slides half off the screen edge to peek back in. It squashes and
+place, takes big leaps across the screen (and over to your other screen, if you have more than one), and slides half
+off the screen edge to peek back in. It squashes and
 stretches and leans into its jumps.
 
 **With your mouse**
 | you | goober |
 |---|---|
-| move the cursor around | watches it; sometimes hops over to sit next to it |
+| move the cursor around | follows it with its eyes (shy or sulky moods peek and look away more); sometimes hops over to sit next to it |
 | hold the cursor still above it | wiggles… and pounces on it (boop!) |
-| … and it catches it | now and then it **steals the cursor** and hops off with it; pull the mouse back to free it |
+| … and it catches it | now and then it **grabs the cursor** in mid-air, carries it off on its arm and tosses it; pull the mouse back to free it |
 | swipe fast at it | hops out of the way (shy and anxious moods especially) |
 | rub the cursor over it | nuzzles into it, then hearts |
 | click it | a knock on its back (double click = double knock) |
