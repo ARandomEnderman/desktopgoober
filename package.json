@@ -1,0 +1,104 @@
+{
+  "name": "desktopgoober",
+  "productName": "goober",
+  "version": "0.2.0",
+  "description": "goober as a desktop pet: sits on your taskbar, hops around and plays with your mouse",
+  "main": "main.js",
+  "private": true,
+  "author": "ARandomEnderman",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ARandomEnderman/desktopgoober.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "test": "node tools/check.js && node tools/play.js"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.arandomenderman.desktopgoober",
+    "productName": "goober",
+    "files": [
+      "main.js",
+      "preload.js",
+      "pet.html",
+      "pet.js",
+      "play.js",
+      "icon.png",
+      "engine/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ARandomEnderman",
+        "repo": "desktopgoober",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "goober-setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "artifactName": "goober-${version}-mac.${ext}",
+      "category": "public.app-category.entertainment",
+      "identity": null,
+      "extendInfo": {
+        "LSUIElement": true
+      }
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "goober-${version}.${ext}",
+      "category": "Game"
+    }
+  }
+}

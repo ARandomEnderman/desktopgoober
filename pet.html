@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>goober</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; -webkit-user-select: none; }
+  #win { position: absolute; left: 0; top: 0; overflow: visible; }
+  #device { position: absolute; left: 0; top: 0; width: 500px; height: 500px; transform-origin: 0 0; cursor: grab; --body: #17181f; --body2: #2a2c38; }
+  #device.dragging { cursor: grabbing; }
+  .ring { position: absolute; left: 50%; top: -22px; width: 50px; height: 50px; margin-left: -25px; border-radius: 50%;
+    border: 7px solid #b9bcc8; box-shadow: inset 0 2px 2px #fff8, 0 2px 4px #0004; }
+  .star { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 10px #0005); }
+  .cam { position: absolute; left: 50px; top: 176px; width: 40px; height: 40px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, #0b0d14 0 30%, #2a3348 34%, #07080c 48%, #1c1e27 62%, #0d0e13 100%);
+    box-shadow: 0 0 0 2px #00000080, inset 0 1px 2px #ffffff40, inset 0 -2px 3px #0008; }
+  .bezel { position: absolute; left: 132px; top: 144px; width: 236px; height: 236px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 40%, #2b2d38, #050508 70%); box-shadow: inset 0 0 0 2px #000, 0 1px 0 #ffffff1a; }
+  #screen { position: absolute; left: 141px; top: 153px; width: 218px; height: 218px; border-radius: 50%; background: #000; display: block; }
+  .glass { position: absolute; left: 141px; top: 153px; width: 218px; height: 218px; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(70% 45% at 40% 14%, #ffffff26, transparent 70%), radial-gradient(90% 60% at 50% 110%, #ffffff10, transparent 60%); }
+
+  /* only in a plain browser (no Electron): a pretend desktop to try it in */
+  body.fake { background: radial-gradient(120% 90% at 30% 10%, #3a4a7a, #141826 70%); font: 600 13px/1.4 system-ui, sans-serif; color: #c9cee0; }
+  body.fake #taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; background: #0b0d14e6; border-top: 1px solid #ffffff14; }
+  body.fake #hint { position: absolute; left: 14px; top: 10px; opacity: .8; }
+  #taskbar, #hint { display: none; } body.fake #taskbar, body.fake #hint { display: block; }
+</style>
+</head>
+<body>
+<div id="hint">goober desktop pet (browser preview) · drag and throw it · click = knock · rub it with the cursor · hold the cursor still above it · right-click = menu</div>
+<div id="taskbar"></div>
+<div id="win">
+  <div id="device">
+    <div class="ring"></div>
+    <svg class="star" viewBox="0 0 500 500" aria-hidden="true">
+      <defs><linearGradient id="bodyGrad" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" style="stop-color: var(--body2)"/><stop offset="0.6" style="stop-color: var(--body)"/></linearGradient></defs>
+      <polygon points="250.0,50.0 318.2,168.2 451.6,196.5 360.3,297.8 374.6,433.5 250.0,378.0 125.4,433.5 139.7,297.8 48.4,196.5 181.8,168.2" fill="url(#bodyGrad)" stroke="url(#bodyGrad)" stroke-width="74" stroke-linejoin="round"/>
+    </svg>
+    <div class="cam"></div>
+    <div class="bezel"></div>
+    <canvas id="screen" width="240" height="240"></canvas>
+    <div class="glass"></div>
+  </div>
+</div>
+<script src="engine/goober.js"></script>
+<script src="play.js"></script>
+<script src="pet.js"></script>
+</body>
+</html>

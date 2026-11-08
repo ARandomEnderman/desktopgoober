@@ -1,0 +1,61 @@
+# Every push to main that touches the app builds installers for Windows, macOS and Linux and publishes them as a new
+# GitHub release (version 0.2.<run number>). Installed apps find it there and update themselves.
+name: release
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'tools/**', '.gitignore']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm version "0.2.${{ github.run_number }}" --no-git-tag-version
+      - run: npx electron-builder --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.yml
+            dist/*.blockmap
+            !dist/builder-debug.yml
+            !dist/builder-effective-config.yaml
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MSG: ${{ github.event.head_commit.message }}
+          V: 0.2.${{ github.run_number }}
+        run: |
+          ls -la dist
+          NOTES="$(printf '%s\n' "${MSG:-manual build}" | head -n 1)"
+          gh release create "v$V" dist/* --repo "$GITHUB_REPOSITORY" --title "goober $V" --notes "$NOTES" --latest
