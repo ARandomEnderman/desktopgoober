@@ -9,7 +9,7 @@
  *   temp     °C                         loud     mic level 0..1
  *   light    camera brightness 0..1     seen     where a person/hand is in the camera view {x,y} in −1..1, or null
  *   gesture  a one-frame event from the camera: 'wave' | 'thumbsup' | 'flick' | 'heart' | 'peace' | 'fist'
- *   battery  0..1
+ *   battery  0..1                     charging  true while USB is plugged in
  *
  * ── Motion rules (measured from the reference clips, frame by frame)
  *  - Calm and deliberate. Both eyes move together like one head. No bubbly jiggle.
@@ -181,15 +181,15 @@
   const HAPPY = { shut: 1, arc: -1, y: 0, shine: 0, blink: false }; // eyes closed into ^ ^
   const FACES = {
     neutral: {},
-    drowsy: { sx: 1.04, sy: 1.02, y: 5, lid: [-40, 4, 0], pv: 0.15, pr: 0.47, fx: ['slowblink'] },
+    drowsy: { sx: 1.04, sy: 1.02, y: 5, pv: 0.15, pr: 0.47, fx: ['slowblink'] },
     halfLid: { shut: 0.22, sx: 1.05, sy: 1.08, y: 3, pv: 0.12 },
     happy: Object.assign({}, HAPPY, { look: [0, -0.1] }),
     beam: Object.assign({}, HAPPY, { look: [0, -0.1], fx: ['bounce'] }),
     giggle: Object.assign({}, HAPPY, { look: [0, -0.1], fx: ['giggle'] }),
     joy: { sx: 1.16, sy: 1.13, bot: 0.05, bend: 0.1, y: -4, pr: 0.52, shine: 0.5 },
-    content: { sx: 1.05, sy: 1.09, lid: [-44, 4, 0], bot: 0.05, bend: 0.04, pr: 0.48, y: 2 },
+    content: { sx: 1.05, sy: 1.09, bot: 0.05, bend: 0.04, pr: 0.48, y: 2 },
     softSmile: { sx: 1.1, sy: 1.17, bot: 0.04, bend: 0.04, pr: 0.5 },
-    groove: { sx: 1.12, sy: 1.1, lid: [-46, 4, 0], bot: 0.06, fx: ['sway'] },
+    groove: { sx: 1.12, sy: 1.1, bot: 0.06, fx: ['sway'] },
     love: { heart: 1, pr: 0.62, pv: 0.02, shine: 0.55, glow: 0.3, bot: 0.25, y: -2, look: [0, 0], fx: ['pulse', 'hearts'] },
     adore: { sx: 1.14, sy: 1.21, pr: 0.66, pv: 0.12, shine: 0.85, glow: 0.24, bot: 0.03, look: [0, 0], blink: false },
     sparkly: { sx: 1.14, sy: 1.12, pr: 0.6, shine: 1, glow: 0.26, fx: ['sparkle'] },
@@ -202,35 +202,35 @@
     scared: { sx: 1.13, sy: 1.28, pr: 0.27, y: -2, look: [0, 0], fx: ['tremble', 'sweat'] },
     worried: { sx: 1.0, sy: 1.08, y: 3, lid: [-44, 26, 0], pr: 0.38, look: [0, 0.1] },
     nervous: { sx: 0.98, sy: 1.06, y: 2, lid: [-44, 26, 0], pr: 0.32, fx: ['shiver', 'sweat'] },
-    sad: { tilt: -0.06, sx: 0.97, sy: 0.98, y: 8, lid: [-42, 30, 0], bend: -0.08, pr: 0.52, pv: 0.3, look: [0, 0.4] },
-    teary: { tilt: -0.06, sx: 1.04, sy: 1.08, y: 5, lid: [-44, 30, 0], bend: -0.08, pr: 0.6, pv: 0.25, shine: 1, glow: 0.18, look: [0, 0.3], fx: ['tears'] },
-    gloomy: { sx: 0.94, sy: 0.96, y: 10, lid: [-36, 22, 0], pr: 0.46, pv: 0.45, shine: 0.1, glow: 0.04, look: [0, 0.6], fx: ['slowblink'] },
+    sad: { tilt: -0.06, sx: 0.97, sy: 0.98, y: 8, bend: -0.08, pr: 0.52, pv: 0.3, look: [0, 0.4] },
+    teary: { tilt: -0.06, sx: 1.04, sy: 1.08, y: 5, bend: -0.08, pr: 0.6, pv: 0.25, shine: 1, glow: 0.18, look: [0, 0.3], fx: ['tears'] },
+    gloomy: { sx: 0.94, sy: 0.96, y: 10, pr: 0.46, pv: 0.45, shine: 0.1, glow: 0.04, look: [0, 0.6], fx: ['slowblink'] },
     angry: { tilt: 0.1, sx: 1.0, sy: 1.04, lid: [-28, -40, 0], bot: 0.03, pr: 0.36, pv: 0.1, look: [0, 0.1] },
     furious: { tilt: 0.14, sx: 1.03, sy: 1.1, lid: [-26, -48, 0], bot: 0.04, pr: 0.28, pv: 0.08, glow: 0.5, shine: 0.1, look: [0, 0], blink: false, fx: ['shake'] },
-    grumpy: { sx: 1.0, sy: 1.0, y: 3, lid: [-38, -14, 0], bot: 0.05, pr: 0.42, pv: 0.25, look: [0, 0.15] },
-    annoyed: { sx: 1.02, sy: 1.02, lid: [-38, 2, 0], bot: 0.05, pr: 0.4, pv: -0.4, look: [0.2, -0.5] },
-    unimpressed: { sx: 1.02, sy: 0.98, lid: [-38, 0, 0], bot: 0.06, pr: 0.42, look: [0.55, 0.05] },
+    grumpy: { sx: 1.0, sy: 1.0, y: 3, bot: 0.05, pr: 0.42, pv: 0.25, look: [0, 0.15] },
+    annoyed: { sx: 1.02, sy: 1.02, bot: 0.05, pr: 0.4, pv: -0.4, look: [0.2, -0.5] },
+    unimpressed: { sx: 1.02, sy: 0.98, bot: 0.06, pr: 0.42, look: [0.55, 0.05] },
     determined: { sx: 1.0, sy: 1.06, lid: [-32, -26, 0], bot: 0.05, pr: 0.42, shine: 0.5, look: [0, 0] },
-    focused: { sx: 0.96, sy: 0.98, lid: [-38, -6, 0], bot: 0.06, pr: 0.3, look: [0, 0], fx: ['stare'] },
-    sleepy: { sx: 1.0, sy: 0.92, y: 8, lid: [-34, 6, 0], bot: 0.04, pv: 0.3, pr: 0.48, fx: ['slowblink'] },
+    focused: { sx: 0.96, sy: 0.98, bot: 0.06, pr: 0.3, look: [0, 0], fx: ['stare'] },
+    sleepy: { sx: 1.0, sy: 0.92, y: 8, bot: 0.04, pv: 0.3, pr: 0.48, fx: ['slowblink'] },
     asleep: { shut: 1, y: 4, shine: 0, glow: 0.04, blink: false, look: [0, 0], fx: ['deepbreath', 'zzz'] },
     dreaming: { shut: 0.97, y: 3, shine: 0, glow: 0.1, blink: false, look: [0, 0], fx: ['deepbreath'] },
     waking: { shut: 0.25, sx: 1.0, sy: 1.02, y: 4, pr: 0.46, pv: 0.3, look: [0, 0.1], blink: false },
     peek: { shut: 0.55, sx: 1.0, sy: 1.08, pv: 0.25, look: [0, 0.1] },
     squint: { sy: 0.4, sx: 1.14, bend: 0.3, pr: 0.5, blink: false },
     blinded: { sy: 0.3, sx: 1.14, bend: 0.2, pr: 0.4, blink: false, look: [0, 0.3] },
-    yawn: { sy: 1.38, sx: 1.1, lid: [-56, 10, 0], pr: 0.36, pv: -0.35, y: -4, blink: false, look: [0, -0.4] },
+    yawn: { sy: 1.38, sx: 1.1, pr: 0.36, pv: -0.35, y: -4, blink: false, look: [0, -0.4] },
     wince: { sy: 0.26, sx: 1.14, bend: 0.45, tilt: 0.35, y: -2, blink: false, look: [0, 0], fx: ['tremble'] },
     dizzy: { pr: 0.4, blink: false, fx: ['orbit', 'roll'] },
-    bored: { sx: 1.0, sy: 1.0, y: 3, lid: [-38, 4, 0], bot: 0.06, look: [0.65, 0.2], fx: ['slowblink'] },
-    suspicious: { look: [0.6, 0], lid: [-40, 0, -12], L: { sy: 0.94, bot: 0.1 }, R: { sy: 1.12, bot: 0.03 } },
-    curious: { rotAll: 0.13, look: [-0.45, -0.3], L: { sx: 1.14, sy: 1.19, y: -4, pr: 0.52 }, R: { sx: 1.14, sy: 0.95, y: 5 }, lid: [-52, 0, 26] },
-    thinking: { rotAll: -0.08, look: [0.55, -0.6], lid: [-46, 0, 14], pr: 0.44, L: { sy: 1.12 }, R: { sy: 1.0 } },
+    bored: { sx: 1.0, sy: 1.0, y: 3, bot: 0.06, look: [0.65, 0.2], fx: ['slowblink'] },
+    suspicious: { look: [0.6, 0], L: { sy: 0.94, bot: 0.1 }, R: { sy: 1.12, bot: 0.03 } },
+    curious: { rotAll: 0.13, look: [-0.45, -0.3], L: { sx: 1.14, sy: 1.19, y: -4, pr: 0.52 }, R: { sx: 1.14, sy: 0.95, y: 5 } },
+    thinking: { rotAll: -0.08, look: [0.55, -0.6], pr: 0.44, L: { sy: 1.12 }, R: { sy: 1.0 } },
     listening: { sx: 1.14, sy: 1.1, pr: 0.55, look: [0, 0] },
     wink: { L: Object.assign({}, HAPPY), R: { shine: 0.6 }, look: [0, 0], blink: false },
     winkR: { R: Object.assign({}, HAPPY), L: { shine: 0.6 }, look: [0, 0], blink: false },
-    smug: { sx: 1.04, sy: 1.04, lid: [-38, -4, 0], bot: 0.08, pr: 0.42, look: [0.5, 0], shine: 0.45 },
-    cool: { sx: 1.04, sy: 1.08, lid: [-42, 2, 0], bot: 0.05, pr: 0.45, look: [0.3, 0.05], fx: ['slowblink'] },
+    smug: { sx: 1.04, sy: 1.04, bot: 0.08, pr: 0.42, look: [0.5, 0], shine: 0.45 },
+    cool: { sx: 1.04, sy: 1.08, bot: 0.05, pr: 0.45, look: [0.3, 0.05], fx: ['slowblink'] },
     shy: { sx: 1.0, sy: 1.06, y: 4, bot: 0.05, pr: 0.5, shine: 0.6, glow: 0.2, look: [-0.45, 0.45] },
     derp: { L: { pu: 0.35, pv: -0.2, pr: 0.4 }, R: { pu: -0.4, pv: 0.25, pr: 0.46 }, look: [0, 0], blink: false },
     crosseyed: { pin: 0.55, pr: 0.42, look: [0, 0], blink: false },
@@ -250,8 +250,8 @@
     meek: { sx: 0.94, sy: 1.02, pr: 0.5, y: 6, shine: 0.5, look: [0, 0.3] },
     smallL: { L: { sx: 0.95, sy: 1.0, y: 2 }, R: { sx: 1.1, sy: 1.24, y: -1 } },
     smallR: { R: { sx: 0.95, sy: 1.0, y: 2 }, L: { sx: 1.1, sy: 1.24, y: -1 } },
-    battery: { pr: 0.3, pv: 0.0, shine: 0.5, glow: 0.3, look: [0, 0], blink: false },
     puppy: { sx: 1.12, sy: 1.22, pr: 0.7, pv: 0.1, shine: 0.85, glow: 0.2, look: [0, 0] },   // big soft pupils that nearly fill the eye
+    walleyed: { pin: -0.62, pr: 0.42, look: [0, 0] },   // charging: each pupil drifts outward, derpy on purpose
     googly: { L: { pu: -0.32, pv: -0.3, pr: 0.42, sx: 1.04, sy: 1.12 }, R: { pu: 0.36, pv: 0.25, pr: 0.38 }, look: [0, 0], blink: false },
     upside: { tilt: -0.1, lid: [-48, 24, 0], sy: 1.14, pr: 0.36 },
   };
@@ -358,7 +358,6 @@
     tumble: (g) => [S('shocked', 0.8, [0, 0], { run: () => g.pop(2) }), S('dizzy', 2.4), S('wince', 0.6)],
     dizzy: () => [S('dizzy', 2.4), S('wince', 0.6)],
     greet: (g) => [S('joy', 1.4, [0, 0], { blink: true, run: () => g.kick(0, -130) }), S('softSmile', 1.6, [0, 0])],
-    showBattery: (g) => [S('battery', 3, [0, 0], { run: () => g.showFill() }), S('neutral', 0.6)],
     hurt: () => [S('shocked', 0.6, [0, 0]), S('sad', 1.6), S('teary', 2.6)],
     blinded: () => [S('blinded', 1.6), S('squint', 0.6)],
     whereDidYouGo: () => [S('worried', 1.2, [-0.6, 0]), S('worried', 1.2, [0.6, 0]), S('sad', 1.8, [0, 0.3])],
@@ -370,6 +369,15 @@
   // META[name] = { fam, face, energy (1 calm … 3 wild) } lets each mood pull its own pool.
   const META = {};
   for (const k in ACTS) META[k] = { fam: 'classic', face: null, energy: 2 };
+  // reactions to something that happened: never played at random (only their trigger plays them)
+  for (const k of ['tumble', 'dizzy', 'hurt', 'greet', 'blinded', 'whereDidYouGo', 'peekabooFound', 'startle', 'groove']) META[k].fam = 'react';
+  // the rest of the hand-made set: tagged with their main face, so a mood only picks the ones that suit it
+  // (no crying in a happy mood, no yawning when hyper)
+  { const stub = new Proxy({}, { get: () => () => 0 });
+    for (const k in ACTS) if (META[k].fam === 'classic') {
+      const st = ACTS[k](stub, 'neutral').map((x) => x.e).filter((e) => e && e !== 'neutral');
+      META[k].face = st[0] || null;
+    } }
   const add = (name, fam, face, energy, fn) => { ACTS[name] = fn; META[name] = { fam, face, energy }; };
   const DIRS = { left: [-0.75, 0], right: [0.75, 0], up: [0, -0.65], down: [0, 0.65], upLeft: [-0.65, -0.55], upRight: [0.65, -0.55], downLeft: [-0.65, 0.55], downRight: [0.65, 0.55] };
   const TEMPO = { slow: 1.5, easy: 1, quick: 0.6 };
@@ -429,7 +437,7 @@
     add(`nope.${n}.${face}`, 'nope', face, 2, () => { const st = []; for (let i = 0; i < n * 2; i++) st.push(S(face, 0.36, [i % 2 ? 0.6 : -0.6, 0])); st.push(S(face, 0.6, [0, 0])); return st; });
   // 10. grooves
   for (const [sn, d] of Object.entries({ short: 2.6, long: 5 })) for (const face of ['groove', 'content', 'joy', 'cool'])
-    add(`groove.${sn}.${face}`, 'groove', face, face === 'joy' ? 3 : 2, (g) => [S(face, d, null, { run: () => g._groove(d) })]);
+    add(`groove.${sn}.${face}`, 'music', face, face === 'joy' ? 3 : 2, (g) => [S(face, d, null, { run: () => g._groove(d) })]);
   // 11. pupils
   for (const [pn, face] of Object.entries({ dilate: 'dilated', shrink: 'pinpoint' })) for (const look of [[0, 0], [-0.4, 0], [0.4, 0], [0, -0.4]])
     add(`pupils.${pn}.${look.join('_')}`, 'pupils', face, 1, (g, f) => [S(face, 2.8, look), S(f, 0.7)]);
@@ -709,7 +717,7 @@
       like: ['puppy', 'adore', 'love', 'softSmile', 'content', 'plump', 'puffy', 'happy', 'beam', 'shy', 'sparkly', 'wonder', 'dilated', 'bigL', 'bigR', 'smallL', 'smallR', 'meek', 'listening'],
       fams: ['drift', 'size', 'cuddle', 'cozy', 'glance', 'blink', 'moment', 'tilt', 'lean', 'special', 'story', 'classic'], react: ['puppy', 'adore', 'love', 'plump', 'happy', 'softSmile'], greet: ['adore', 'joy', 'softSmile'] },
     silly: { rest: 'neutral', faces: ['joy', 'smug', 'wide'], energy: 3, every: [5, 12], sac: 1.3, blink: 0.9,
-      like: ['puppy', 'derp', 'crosseyed', 'googly', 'boggle', 'giggle', 'joy', 'happy', 'surprised', 'shocked', 'wheee', 'bigL', 'bigR', 'smallL', 'smallR', 'wide', 'tall', 'puffy', 'wink', 'winkR', 'smug', 'dizzy'],
+      like: ['puppy', 'derp', 'crosseyed', 'googly', 'boggle', 'giggle', 'joy', 'happy', 'surprised', 'shocked', 'wheee', 'bigL', 'bigR', 'smallL', 'smallR', 'wide', 'tall', 'puffy', 'wink', 'winkR', 'smug'],
       fams: ['drift', 'size', 'silly', 'glance', 'turn', 'watch', 'blink', 'moment', 'hop', 'bigEye', 'story', 'special', 'classic'], react: ['giggle', 'joy', 'wink', 'winkR', 'puffy', 'derp', 'googly', 'surprised'], greet: ['joy', 'beam', 'excited'] },
     anxious: { rest: 'worried', faces: ['nervous', 'meek', 'tiny', 'listening'], energy: 2, every: [6, 14], sac: 1.4, blink: 1,
       like: ['worried', 'nervous', 'meek', 'tiny', 'scared', 'surprised', 'shocked', 'listening', 'shy', 'sad', 'pinpoint', 'smallL', 'smallR', 'focused'],
@@ -843,7 +851,7 @@
       this.nextBlink = rr(1, 4); this.nextSac = 1; this.lastInput = 0;
       this.btn = { down: false, t0: 0, long: false, taps: 0, lastTap: -9, tapTimes: [] };
       this.imu = { lp: { x: 0, y: -1, z: 0 }, E: 0, shakeT: 0, ffT: 0, falling: false, fallT0: 0, upT: 0, lastJolt: -9, dizzyTimes: [] };
-      this.sense = { cold: 0, hot: 0, loud: 0, loudSlow: 0, light: 0.6, dark: 0, seen: null, seenSince: -1, lastSeen: -99, nextEnv: 15, battery: 1, covered: false, coverT: 0 };
+      this.sense = { cold: 0, hot: 0, loud: 0, loudSlow: 0, light: 0.6, dark: 0, seen: null, seenSince: -1, lastSeen: -99, nextEnv: 15, battery: 1, charging: false, covered: false, coverT: 0 };
       this.parts = []; this.fxT = {}; this._tm = []; this.sleepPokes = []; this.listeners = [];
       this._apply('neutral');
     }
@@ -878,7 +886,7 @@
     get shading() { return SHADE; }
     set shading(v) { SHADE = v === 'bowl' || v === 'flat' ? v : 'none'; }
     // ── power plan: the brain tells the hardware how hard it needs to work right now.
-    //  fps      how often the screen must be redrawn (fast only while something actually moves)
+    //  fps      how often the screen must be redrawn (fast only while something actually moves; 0 = hold the frame)
     //  camFps   how often the camera should look (rare when nobody's around, quick bursts when someone is)
     //  bright   screen brightness 0..1 (dims when nothing happens, off when asleep)
     //  micOn    whether the mic needs to listen
@@ -899,6 +907,11 @@
       const carried = this.imu.carried;
       P.camFps = asleep && dark ? 0 : asleep ? 0.2 : attention ? 5 : E.seen ? 2 : carried ? 0.5 : idle > 120 ? 0.3 : 0.5;  // the camera mostly naps; monitor mode wakes it on motion
       P.bright = !P.screen ? 0 : dark ? 0.4 : 1;      // full brightness always; only very dark rooms get a dimmer screen
+      if (E.charging && P.screen) {                    // plugged in: dim to 20 %, and once the wall-eyed stare has settled
+        if (this.seq) E.busyUntil = t;                 // (~2.5 s after plugging in or after a reaction) stop redrawing:
+        P.bright = 0.2;                                // the panel keeps showing the last frame
+        if (t - (E.busyUntil || 0) > 2.5) P.fps = 0;
+      }
       P.micOn = !asleep;
       return P;
     }
@@ -1049,6 +1062,22 @@
     _groove(d) { this.grooveUntil = this.t + d; }
     zoom(z) { this.g.zoom.t = z; }
     showFill() { const b = this.sense.battery; for (const e of this.eyes) { e.s.fill.x = 0; e.s.fill.t = b; } }
+    // ── arm lights: 3 RGB LEDs in a line on the top-right arm (index 0 = nearest the screen). Hardware: SK6812MINI-E
+    //    chain on GPIO5, power switch on GPIO6 (switch off whenever all three are black). A battery gauge in the
+    //    goober's own eye colour, shown while charging and for 4 s after a 👍: each LED is a third of the battery and
+    //    glows brighter as its third fills (33 % = first full, 50 % = first full + second half); at 20 % or less the
+    //    innermost one is red. Returns [[r, g, b] x 3].
+    armLights() {
+      const out = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], E = this.sense;
+      if (!E.charging && !(this.t < (E.lightsUntil || 0))) return out;
+      const b = clamp(E.battery, 0, 1), MAX = 0.45;          // dim: they sit right next to the screen
+      for (let i = 0; i < 3; i++) {                            // each LED is a third: 50 % = first full, second half
+        const k = clamp(b * 3 - i, 0, 1) * MAX;
+        const col = i === 0 && b <= 0.2 ? [255, 40, 30] : PAL.eye;       // 20 % or less: the innermost one goes red
+        out[i] = col.map((c) => Math.round(c * k));
+      }
+      return out;
+    }
     // blink curve measured from the reference recording: the lid starts slow and snaps shut (~170 ms), stays shut
     // ~60–170 ms, then lifts and eases out (~500 ms). `slow` stretches it (sleepy blinks).
     blink(slow) {
@@ -1269,6 +1298,9 @@
       const temp = typeof input.temp === 'number' ? input.temp : 21, loud = typeof input.loud === 'number' ? input.loud : 0;
       const light = typeof input.light === 'number' ? input.light : 0.6;
       if (typeof input.battery === 'number') E.battery = input.battery;
+      const plug = !!input.charging;
+      if (plug && !E.charging) { this._emit('plugged in → wall-eyed, screen dims to 20 % and holds the frame'); E.busyUntil = this.t; }
+      E.charging = plug;
       E.cold += ((temp < 10 ? 1 : 0) - E.cold) * k; E.hot += ((temp > 31 ? 1 : 0) - E.hot) * k;
       const bang = loud - E.loudSlow; E.loud += (loud - E.loud) * (1 - Math.exp(-dt / 0.15)); E.loudSlow += (loud - E.loudSlow) * k;
       const flash = light - E.light, prevLight = E.light; E.light += (light - E.light) * (1 - Math.exp(-dt / 1.2));
@@ -1292,9 +1324,10 @@
         if (this.mode === 'asleep') this._wake();
         else {
           const M = this.mood, heartPool = this.actNames.filter((n) => /^(love|starstruck)\./.test(n) || n === 'hearts');
-          const map = { wave: this._pickAct(MOODS[M].hello), thumbsup: 'showBattery', flick: M === 'grumpy' || M === 'sassy' ? pick(['glare.quick.angry', 'eyeRoll.cw.grumpy', 'hurt']) : 'hurt', heart: pick(heartPool), peace: pick(['blink.winkRight', 'blink.wink', 'react.wink.hop']), fist: 'determinedNod' };
+          const map = { wave: this._pickAct(MOODS[M].hello), thumbsup: pick(['blink.wink', 'blink.winkRight']), flick: M === 'grumpy' || M === 'sassy' ? pick(['glare.quick.angry', 'eyeRoll.cw.grumpy', 'hurt']) : 'hurt', heart: pick(heartPool), peace: pick(['blink.winkRight', 'blink.wink', 'react.wink.hop']), fist: 'determinedNod' };
           const a = map[gst];
           if (gst === 'wave') E.attnUntil = t + rr(8, 14);
+          if (gst === 'thumbsup') { E.lightsUntil = t + 4; this._emit('👍 → arm lights show the battery'); }
           const pullOf = { wave: ['happy', 0.8], heart: [this.mood === 'shy' ? 'shy' : 'dreamy', 1], peace: ['playful', 0.7], fist: ['hyper', 0.8], flick: ['grumpy', 1.5] }[gst];
           if (pullOf) this.nudge(pullOf[0], pullOf[1], gst + 's');
           if (a === 'determinedNod') { this._emit('fist bump → determined'); this.play([{ e: 'determined', d: 1.4, run: () => this.kick(0, 120) }, { e: 'softSmile', d: 1 }], 'fist bump'); }
@@ -1312,10 +1345,10 @@
       if (this.seq || t < E.nextEnv) return;
       if (E.loudSlow > 0.65) { this.nudge('grumpy', 0.8, 'too loud'); this._emit('too loud → nervous'); this.play([{ e: 'nervous', d: 3 }], 'too loud'); E.nextEnv = t + rr(10, 18); }
       else if (E.loudSlow > 0.3 && !(this.mood === 'happy' || this.mood === 'hyper' || this.mood === 'dreamy')) { this.nudge('happy', 0.7, 'music'); E.nextEnv = t + rr(8, 14); }
-      else if (E.loudSlow > 0.3 && (this.mood === 'happy' || this.mood === 'hyper' || this.mood === 'dreamy')) { this.nudge('hyper', 0.5, 'music'); this._emit('music → grooves'); this._act('groove'); E.nextEnv = t + rr(12, 20); }
+      else if (E.loudSlow > 0.3 && (this.mood === 'happy' || this.mood === 'hyper' || this.mood === 'dreamy')) { this.nudge('hyper', 0.5, 'music'); this._emit('music → grooves'); this._act(pick(this.actNames.filter((n) => n.startsWith('groove.')).concat('groove'))); E.nextEnv = t + rr(12, 20); }
       else if (E.cold > 0.6) { this.nudge('sleepy', 0.6, 'cold'); this._emit('cold → shivers'); this.play([{ e: 'nervous', d: 2.6 }], 'cold'); E.nextEnv = t + rr(14, 24); }
       else if (E.hot > 0.6) { this.nudge('sleepy', 0.7, 'heat'); this._emit('hot → wilting'); this.play([{ e: 'sleepy', d: 3, run: () => this.spawn('drop', 192, 52, { s: 6, vy: 6, ay: 50, life: 1.6 }) }], 'hot'); E.nextEnv = t + rr(16, 26); }
-      else if (E.battery < 0.12) { this._emit('battery low → drowsy'); this._act('yawn'); E.nextEnv = t + rr(20, 40); }
+      else if (E.battery < 0.12 && !E.charging) { this._emit('battery low → drowsy'); this._act('yawn'); E.nextEnv = t + rr(20, 40); }
     }
 
     // ── what to do right now
@@ -1336,7 +1369,8 @@
       else if (this.mode === 'asleep') {
         face = 'asleep';
         if (t >= this.nextAct) { this.nextAct = t + rr(20, 45); if (rnd() < 0.4) this.play([{ e: 'dreaming', d: rr(2, 4) }], 'dreaming'); }
-      } else if (this.imu.upT > 1.2) face = 'upside';
+      } else if (this.sense.charging) face = 'walleyed';      // plugged in: holds a derpy wall-eyed stare (reactions still play)
+      else if (this.imu.upT > 1.2) face = 'upside';
       else if (this.mood === 'sleepy' && idle > 900 && !this.imu.carried) { this.nudge('sleepy', 1.5, 'left alone'); this._sleep('nobody around → dozes off'); face = 'drowsy'; }
       else if (t >= this.nextAct) { this._act(this._pickAct(M.acts)); face = this.seq ? this.seq[0].e : M.rest; }
       else {

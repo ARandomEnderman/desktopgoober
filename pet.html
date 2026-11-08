@@ -11,6 +11,8 @@
   .ring { position: absolute; left: 50%; top: -22px; width: 50px; height: 50px; margin-left: -25px; border-radius: 50%;
     border: 7px solid #b9bcc8; box-shadow: inset 0 2px 2px #fff8, 0 2px 4px #0004; }
   .star { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 10px #0005); }
+  .led { position: absolute; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 3px; transform: rotate(-18deg);
+    background: #1b1d26; box-shadow: inset 0 1px 2px #0009, 0 0 0 1px #00000040; transition: box-shadow .08s; }
   .cam { position: absolute; left: 50px; top: 176px; width: 40px; height: 40px; border-radius: 50%;
     background: radial-gradient(circle at 50% 50%, #0b0d14 0 30%, #2a3348 34%, #07080c 48%, #1c1e27 62%, #0d0e13 100%);
     box-shadow: 0 0 0 2px #00000080, inset 0 1px 2px #ffffff40, inset 0 -2px 3px #0008; }
@@ -37,6 +39,9 @@
       <defs><linearGradient id="bodyGrad" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" style="stop-color: var(--body2)"/><stop offset="0.6" style="stop-color: var(--body)"/></linearGradient></defs>
       <polygon points="250.0,50.0 318.2,168.2 451.6,196.5 360.3,297.8 374.6,433.5 250.0,378.0 125.4,433.5 139.7,297.8 48.4,196.5 181.8,168.2" fill="url(#bodyGrad)" stroke="url(#bodyGrad)" stroke-width="74" stroke-linejoin="round"/>
     </svg>
+    <div class="led" id="led0" style="left:383.1px;top:218.7px"></div>
+    <div class="led" id="led1" style="left:409.8px;top:210.1px"></div>
+    <div class="led" id="led2" style="left:436.4px;top:201.4px"></div>
     <div class="cam"></div>
     <div class="bezel"></div>
     <canvas id="screen" width="240" height="240"></canvas>

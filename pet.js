@@ -31,8 +31,9 @@
   const EXT = { top: -26, bottom: 471, left: 11, right: 489 };    // the body's extent in device units (ring and stroke included)
   const SCREEN_C = { x: 250, y: 262 };                             // centre of the round screen, device units
   let grab = { x: 250, y: 262 };                                   // pivot, device units
-  const P = { x: 0, y: 0, vx: 0, vy: 0, rot: 0, rotV: 0, held: false, ground: false, self: false };  // P.x/y = pivot on screen; self = its own hop
-  const dev = $('device'), win = $('win'), cv = $('screen'), ctx = cv.getContext('2d');
+  const P = { x: 0, y: 0, vx: 0, vy: 0, rot: 0, rotV: 0, held: false, ground: false, self: false,
+    spin: 0, lift: 0, stick: false };   // spin/lift: extra turn and raise for tricks (play.js); stick: on a wall / the top edge, physics off  // P.x/y = pivot on screen; self = its own hop
+  const dev = $('device'), win = $('win'), cv = $('screen'), ctx = cv.getContext('2d'), leds = [0, 1, 2].map((i) => $('led' + i));
   let img = null, RES = 0;
 
   function applySize() {
@@ -44,11 +45,11 @@
   function applyBody() { const b = BODIES[S.body] || BODIES.black; dev.style.setProperty('--body', b[0]); dev.style.setProperty('--body2', b[1]); }
   // device units → screen px (around the pivot, rotated)
   function toScreen(u, v) {
-    const c = Math.cos(P.rot), sn = Math.sin(P.rot), dx = (u - grab.x) * s, dy = (v - grab.y) * s;
-    return { x: P.x + c * dx - sn * dy, y: P.y + sn * dx + c * dy };
+    const r = P.rot + P.spin, c = Math.cos(r), sn = Math.sin(r), dx = (u - grab.x) * s, dy = (v - grab.y) * s;
+    return { x: P.x + c * dx - sn * dy, y: P.y - P.lift + sn * dx + c * dy };
   }
   function toDevice(x, y) {
-    const c = Math.cos(P.rot), sn = Math.sin(P.rot), dx = x - P.x, dy = y - P.y;
+    const r = P.rot + P.spin, c = Math.cos(r), sn = Math.sin(r), dx = x - P.x, dy = y - P.y + P.lift;
     return { x: grab.x + (c * dx + sn * dy) / s, y: grab.y + (-sn * dx + c * dy) / s };
   }
   // move the pivot to another point of the body without anything moving on screen
@@ -101,7 +102,8 @@
   dev.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     dev.setPointerCapture(e.pointerId); const p = pt(e), u = toDevice(p.x, p.y);
-    down = { x: p.x, y: p.y, t: performance.now(), moved: false };
+    down = { x: p.x, y: p.y, t: performance.now(), moved: false, track: [{ x: p.x, y: p.y, t: performance.now() }] };
+    P.spin = 0; P.lift = 0; P.stick = false;
     repivot(u.x, u.y); P.held = true; P.self = false; P.vx = P.vy = 0; host.ignore(false);
     resetImu(); dev.classList.add('dragging');
   });
@@ -109,12 +111,20 @@
     if (!down) return; const p = pt(e);
     if (Math.hypot(p.x - down.x, p.y - down.y) > 4) { down.moved = true; P.ground = false; }
     P.tx = p.x; P.ty = p.y;
+    const tn = performance.now(); down.track.push({ x: p.x, y: p.y, t: tn });
+    while (down.track.length > 2 && tn - down.track[0].t > 120) down.track.shift();
   });
   const up = (e) => {
     if (!down) return;
     if (!down.moved && performance.now() - down.t < 300) knockUntil = nowS() + 0.05;
+    // throw speed: how fast your hand actually moved over the last ~0.1 s (the smoothed "hand" goober feels lags
+    // behind a flick, so using it made every throw lose speed the moment you let go). Holding still before letting
+    // go is a gentle drop, not a throw.
+    const tn = performance.now(), tr = down.track.filter((q) => tn - q.t < 120);
+    let vx = 0, vy = 0;
+    if (tr.length >= 2) { const a = tr[0], b = tr[tr.length - 1], dt = Math.max(0.016, (b.t - a.t) / 1000); if (tn - b.t < 60) { vx = (b.x - a.x) / dt; vy = (b.y - a.y) / dt; } }
     down = null; P.held = false; P.tx = P.ty = undefined; dev.classList.remove('dragging');
-    P.vx = clamp(IMU.vx, -4000, 4000); P.vy = clamp(IMU.vy, -4000, 4000);
+    P.vx = clamp(vx, -6000, 6000); P.vy = clamp(vy, -6000, 6000);
     if (Math.hypot(P.vx, P.vy) < 80) P.vx = P.vy = 0;
   };
   dev.addEventListener('pointerup', up); dev.addEventListener('pointercancel', up);
@@ -141,10 +151,30 @@
   }
 
   // ── menu commands (main.js)
-  host.on('reroll', () => { g.rollGoober(); host.save({ id: g.id }); });
+  // hatch a new goober: everything is rolled again (personality, eyes, colour, the rest of its DNA). The eye type is
+  // rolled until it differs from the old one, so you can always see it's someone new; then a little hatch moment.
+  host.on('reroll', () => hatch());
+  function hatch() {
+    const old = g.look.type;
+    for (let i = 0; i < 40; i++) { g.rollGoober(); if (g.look.type !== old) break; }
+    host.save({ id: g.id }); sendInfo(true);
+    if (!P.held) { P.vx = 0; jump(0, -900); P.spin = 0; }
+    g.preview('starstruck', 1.6);
+  }
+  // what's shown at the top of the menu: who this goober is
+  const ROWS = ['very cute', 'cute', 'in between', 'feisty', 'very feisty'], COLS = ['very chill', 'chill', 'in between', 'hyper', 'very hyper'];
+  let infoKey = '';
+  function sendInfo(force) {
+    const p = g.personality, info = { personality: p.name, kind: ROWS[p.row] + ', ' + COLS[p.col], eyes: g.look.type, colour: g.look.swatch, mood: g.mood, id: g.id };
+    const k = JSON.stringify(info); if (!force && k === infoKey) return; infoKey = k;
+    if (host.info) host.info(info);
+  }
+  setInterval(() => sendInfo(false), 2000); sendInfo(true);
   host.on('loadId', (str) => { const r = g.setId(str); if (r.ok) host.save({ id: g.id }); });
   host.on('home', () => { home(true); });
   host.on('displays', (d) => { displays = d; });
+  let gesture = null;
+  host.on('gesture', (v) => { gesture = v; });            // menu "Show the battery" = the 👍 (arm lights for 4 s)
   host.on('settings', (v) => { const sizeWas = S.size; S = v; applyBody(); if (S.size !== sizeWas) { const c = centre(); applySize(); grab = { x: 250, y: 250 }; P.x = c.x; P.y = c.y; P.rot = P.rotV = 0; P.ground = false; } });
 
   // ── fake accelerometer: what a real one in the body would feel (specific force = acceleration − gravity), as in
@@ -167,7 +197,7 @@
       const m = Math.hypot(IMU.ax, IMU.ay) / G;
       if (m > 1e-6 && m < 2) { const k = (m * m / 2) / m; IMU.fax = IMU.ax * k; IMU.fay = IMU.ay * k; } else { IMU.fax = IMU.ax; IMU.fay = IMU.ay; }
     } else {
-      IMU.ax = 0; IMU.ay = S.gravity && !P.ground && !P.self ? G : 0;   // its own hops: it knows it jumped, no "wheee"
+      IMU.ax = 0; IMU.ay = S.gravity && !P.ground && !P.self && !P.stick ? G : 0;   // its own hops: it knows it jumped, no "wheee"
       IMU.x = P.x; IMU.y = P.y; IMU.vx = P.vx; IMU.vy = P.vy; IMU.fax = IMU.ax; IMU.fay = IMU.ay;
     }
     // the tilt it feels follows the drawn swing at ≤ 0.5 rad/s: turning over to hang from an arm is then a slow
@@ -197,6 +227,7 @@
       P.rot += P.rotV * dt;
       return;
     }
+    if (P.stick) { P.vx = P.vy = 0; return; }                     // on a wall / hanging from the top: play.js moves it
     // let go: the body settles upright (it lands on its two bottom points); in its own hops it leans into the jump
     const lean = P.self && !P.ground ? clamp(P.vx / 6000, -0.22, 0.22) : 0;
     P.rotV += (-60 * (P.rot - lean) - 11 * P.rotV) * dt; P.rot += P.rotV * dt;
@@ -248,10 +279,22 @@
         top: d.y + (SCREEN_C.y - EXT.top) * s, floor: d.y + d.height - (EXT.bottom - SCREEN_C.y) * s, screenL: d.x, screenR: d.x + d.width,
         openL: !!neighbor(d, -1), openR: !!neighbor(d, 1) }; },
     jump, squash: (v) => { SQ.t = v; }, bounce: (v) => { SQ.v += v; },
+    // tricks: turn round the face's middle, and lift the body so a turned star stands on its lowest point, not in the floor
+    centrePivot: () => { if (grab.x !== 250 || grab.y !== 262) { P.rot = P.rotV = 0; repivot(250, 262); } },
+    liftFor: (spin) => liftFor(spin),
     cursorTo: (x, y) => host.cursorTo && host.cursorTo(x, y), canSteal: () => !!init.canSteal,
     cursor: { get pos() { return cursor; }, vel: cursorVel, still: () => nowS() - cursorMoved,
       get over() { return !!cursor && !down && overBody(cursor.x, cursor.y); } },
   });
+
+  // how far the body's lowest point drops below its normal bottom when turned by `spin` round the face's middle (px)
+  const STAR_PTS = [[250, 50], [318.2, 168.2], [451.6, 196.5], [360.3, 297.8], [374.6, 433.5], [250, 378], [125.4, 433.5], [139.7, 297.8], [48.4, 196.5], [181.8, 168.2]];
+  function liftFor(spin) {
+    const c = Math.cos(spin), sn = Math.sin(spin); let low = -Infinity;
+    for (const [u, v] of STAR_PTS) low = Math.max(low, sn * (u - 250) + c * (v - 262) + 37);   // 37 = half the rounded stroke
+    low = Math.max(low, sn * 0 + c * (-22 - 262));                                              // the key ring
+    return Math.max(0, (low - (EXT.bottom - 262)) * s);
+  }
 
   // ── never lost, never half off the screen
   // · a broken position (NaN) or the body's middle off every screen for 3 s (a screen unplugged, a bad throw):
@@ -273,6 +316,16 @@
     outT = (offL > 2 && !open(-1)) || (offR > 2 && !open(1)) ? outT + dt : 0;
     if (outT > 0.6) { outT = 0; const sz = SIZES[S.size]; play.hopIn(offL > 2 ? c.x + offL + sz * 0.3 : c.x - offR - sz * 0.3); }
   }
+
+  // ── the computer's battery, if it has one. The level feeds the engine's battery (arm-light gauge, low-battery
+  // yawns). Plugging the charger in gives the engine's charging look (wall-eyed stare, gauge lit, dimmed screen) for
+  // ~8 s, then it's back to normal: a laptop that's always plugged in shouldn't keep goober wall-eyed and dimmed.
+  // Desktops report "charging, 100 %" forever and never change, so they never trigger it.
+  const BAT = { level: 1, charging: false, pulseUntil: 0 };
+  if (navigator.getBattery) navigator.getBattery().then((b) => {
+    const read = () => { BAT.level = b.level; if (b.charging && !BAT.charging && BAT.seen) BAT.pulseUntil = nowS() + 8; BAT.charging = b.charging; BAT.seen = true; };
+    read(); b.addEventListener('levelchange', read); b.addEventListener('chargingchange', read);
+  }).catch(() => {});
 
   // ── light: the room, unless it's night (fades over a couple of minutes so it notices "dark", not "covered")
   let light = 0.6;
@@ -327,15 +380,23 @@
       seen = { x: Math.tanh(dx / 450) * 1.25, y: Math.tanh(dy / 450) * 1.25 };
       if (play.lookAt || watchingCursor(now, Math.hypot(dx, dy))) follow(now, seen);   // eyes on it
     }
-    g.update(dt, { imu, light: lightNow(dt), seen, temp: 21, loud: 0, battery: 1 });
+    g.update(dt, { imu, light: lightNow(dt), seen, gesture, temp: 21, loud: 0, battery: BAT.level, charging: nowS() < BAT.pulseUntil });
+    gesture = null;
 
     // place the window so the pivot is in its middle, and draw the body around the pivot
     host.move(P.x - W / 2, P.y - W / 2);
     const sy = 1 + SQ.x, sx = 1 - SQ.x * 0.8;                       // squash round the bottom of the body
-    dev.style.transform = `translate(${W / 2}px, ${W / 2}px) rotate(${P.rot}rad) translate(${-grab.x * s}px, ${-grab.y * s}px) scale(${s}) translate(250px, ${EXT.bottom}px) scale(${sx}, ${sy}) translate(-250px, ${-EXT.bottom}px)`;
+    dev.style.transform = `translate(${W / 2}px, ${W / 2 - P.lift}px) rotate(${P.rot + P.spin}rad) translate(${-grab.x * s}px, ${-grab.y * s}px) scale(${s}) translate(250px, ${EXT.bottom}px) scale(${sx}, ${sy}) translate(-250px, ${-EXT.bottom}px)`;
     // the screen: at rest the engine redraws at 15–30 fps, so don't burn more than that
-    const busy = P.held || !P.ground || Math.abs(P.rotV) > 0.01 || Math.abs(SQ.v) > 0.05 || play.state !== 'idle';
-    if (busy || ++idleFrame % 2 === 0) { g.render(img.data, RES); ctx.putImageData(img, 0, 0); }
+    const busy = P.held || !P.ground || P.stick || P.spin !== 0 || Math.abs(P.rotV) > 0.01 || Math.abs(SQ.v) > 0.05 || play.state !== 'idle';
+    const hold = g.power && g.power.screen && g.power.fps === 0;          // charging: the panel keeps its last frame
+    if (!hold && (busy || ++idleFrame % 2 === 0)) { g.render(img.data, RES); ctx.putImageData(img, 0, 0); }
+    if (g.power) { const br = g.power.screen ? Math.sqrt(g.power.bright) : 1; cv.style.filter = br < 0.99 ? `brightness(${br.toFixed(2)})` : ''; }
+    g.armLights().forEach(([r, gg, b], i) => {                              // the 3 RGB lights on the top-right arm
+      const el = leds[i], on = r + gg + b > 0;
+      el.style.background = on ? `rgb(${Math.min(255, r * 2.2)},${Math.min(255, gg * 2.2)},${Math.min(255, b * 2.2)})` : '';
+      el.style.boxShadow = on ? `0 0 ${6 + (r + gg + b) / 30}px 2px rgba(${r * 2.2},${gg * 2.2},${b * 2.2},.75)` : '';
+    });
 
     // remember where it sits
     saveT += dt;
@@ -343,7 +404,7 @@
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__goober = { g, P, play, watch, SQ, get grab() { return grab; } };   // for tools/check.js and tools/play.js
+  window.__goober = { g, P, play, watch, SQ, hatch, get grab() { return grab; } };   // for tools/check.js and tools/play.js
 
   // ── a pretend desktop for plain browsers (no Electron): the page is the screen, #win is the window
   function fakeHost() {
@@ -381,6 +442,7 @@
       ignore: () => {},
       save: (p) => { if (p.id) localStorage.setItem('goober.id', p.id); },
       on: (ch, fn) => { handlers[ch] = fn; },
+      info: (v) => { window.__info = v; },
       menu: () => {   // a tiny stand-in for the real right-click menu
         if (menu) menu.remove();
         menu = document.createElement('div');
@@ -390,6 +452,7 @@
           item((S0[k] ? '☑ ' : '☐ ') + label, () => { S0[k] = !S0[k]; handlers.settings({ ...S0 }); });
         for (const sz of ['small', 'medium', 'large']) item('size: ' + sz, () => { S0.size = sz; handlers.settings({ ...S0 }); });
         for (const b of Object.keys(BOD)) item('body: ' + b, () => { S0.body = b; handlers.settings({ ...S0 }); });
+        item('show the battery', () => handlers.gesture('thumbsup'));
         item('hatch a new goober', () => handlers.reroll(1));
         item('bring back', () => handlers.home(1));
         document.body.appendChild(menu);

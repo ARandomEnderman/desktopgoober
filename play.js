@@ -89,10 +89,11 @@
         if (t >= B.phaseT && P.ground) { B.phase = 'pause'; B.phaseT = t + (B.cur.rest || rr(0.06, 0.22)); if (B.cur.onLand) B.cur.onLand(); }
       }
     }
-    const cancel = () => { B.hops = []; B.then = null; B.st = 'idle'; B.lookAt = null; X.squash(0); };
+    const cancel = () => { B.hops = []; B.then = null; B.st = 'idle'; B.lookAt = null; B.trick = null; X.squash(0); X.P.spin = 0; X.P.lift = 0; X.P.stick = false; };
 
     // ── things it does by itself
     function whim() {
+      if (Math.random() < 0.5 && randomTrick()) return;           // half the time one of the little events below
       const A = X.area(), C = X.face(), sz = X.size(), e = energy();
       const roll = Math.random();
       const away = C.x - A.left < sz * 1.5 ? 1 : A.right - C.x < sz * 1.5 ? -1 : (Math.random() < 0.5 ? -1 : 1);
@@ -114,6 +115,113 @@
         if (free()) act(pick(['lookAround', 'lookAroundSlow.2', 'stretch.small', 'wiggle']));
         say('looks around');
       }
+    }
+
+    // ── little events it does now and then. Each is a small script run frame by frame (B.st = 'trick'); grabbing goober
+    // or it falling asleep cancels it. P.spin / P.lift are extra turn / raise of the body (the eyes stay the engine's).
+    const TAU = Math.PI * 2, ease = (k) => k * k * (3 - 2 * k);
+    function trick(name, step) { X.centrePivot(); B.st = 'trick'; B.trick = { name, t0: X.now(), step, d: {} }; say(name); }
+    function endTrick() { const P = X.P; P.spin = 0; P.lift = 0; P.stick = false; B.trick = null; B.st = 'idle'; B.lookAt = null; X.squash(0); }
+    const dirAway = () => { const A = X.area(), C = X.face(), sz = X.size(); return C.x - A.left < sz * 2 ? 1 : A.right - C.x < sz * 2 ? -1 : (Math.random() < 0.5 ? -1 : 1); };
+    // the outer wall nearest to it (not an edge with another screen beyond), or 0
+    const nearWall = () => { const A = X.area(), C = X.face(); const l = !A.openL, r = !A.openR; if (l && r) return C.x - A.left < A.right - C.x ? -1 : 1; return l ? -1 : r ? 1 : 0; };
+    const TRICKS = {
+      // a front flip (or back flip) with a little forward hop
+      flip: { energy: 2, gravity: true, run() { const dir = dirAway(), sz = X.size(), h = rr(1.3, 1.8) * sz, T = 2 * Math.sqrt(2 * h / X.G);
+        trick('does a flip', (t, dt, d) => {
+          if (!d.go) { d.go = 1; X.squash(-0.18); return false; }
+          if (d.go === 1 && t > 0.18) { d.go = 2; X.squash(0); hopTo(X.face().x + dir * sz * 0.7, h); g.preview('excited', T); }
+          if (d.go === 2) { X.P.spin = dir * TAU * ease(Math.min(1, (t - 0.18) / (T * 0.92))); if (t > 0.3 && X.P.ground) { if (free()) act(pick(['proudNod.1', 'giggle.small', 'showOff.1'])); return true; } }
+          return false; }); } },
+      // zoomies: a burst of quick hops back and forth
+      zoomies: { energy: 2, gravity: true, run() { const C = X.face(), sz = X.size(), list = []; let x = C.x, dir = dirAway();
+        for (let i = 0; i < 8 + Math.floor(Math.random() * 6); i++) { if (i % 3 === 2) dir = -dir; x += dir * rr(0.5, 0.9) * sz; list.push({ x, h: rr(0.12, 0.3) * sz, crouch: 0.05, rest: 0.02 }); }
+        say('zoomies!'); if (free()) act(pick(['hop.3.excited', 'hop.2.joy'])); chain(list, () => { if (free()) act(pick(['giggle.small', 'squishy.1.quick'])); }); } },
+      // rolls along the floor like a wheel (a whole number of turns), a bit dizzy after
+      roll: { energy: 1.5, gravity: true, run() { const A = X.area(), sz = X.size(), dir = dirAway(), r = 0.45 * sz;
+        const turns = Math.max(1, Math.round(rr(1.5, 3) * sz / (TAU * r))), dist = turns * TAU * r, x0 = X.face().x, x1 = clamp(x0 + dir * dist, A.left, A.right), dur = Math.abs(x1 - x0) / (sz * 1.6) + 0.2;
+        trick('rolls', (t) => { const k = ease(Math.min(1, t / dur)); X.P.x = x0 + (x1 - x0) * k; X.P.spin = dir * turns * TAU * k; X.P.lift = X.liftFor(X.P.spin);
+          if (t >= dur) { if (free()) act(pick(['dizzy', 'derpOut.1.googly', 'derpOut.1.crosseyed'])); return true; } return false; }); } },
+      // spins round on the spot (chasing its own tail)
+      spin: { energy: 1.5, run() { const dir = Math.random() < 0.5 ? -1 : 1, turns = 1 + Math.floor(Math.random() * 2), dur = 0.9 + turns * 0.4;
+        trick('spins round', (t) => { const k = ease(Math.min(1, t / dur)); X.P.spin = dir * turns * TAU * k; X.P.lift = X.liftFor(X.P.spin);
+          if (t >= dur) { if (free()) act(pick(['derpOut.1.googly', 'dizzy', 'giggle.small'])); return true; } return false; }); } },
+      // a little dance: wiggle-hops left and right on the beat
+      dance: { energy: 1.3, run() { const beats = 6 + 2 * Math.floor(Math.random() * 3), sz = X.size(), x0 = X.face().x;
+        if (free()) act(pick(['groove.short.joy', 'groove.short.groove', 'groove.long.joy'].filter((n) => g.actNames.indexOf(n) >= 0).concat('wiggle')));
+        trick('dances', (t, dt, d) => { const beat = Math.floor(t / 0.42), ph = (t % 0.42) / 0.42, side = beat % 2 ? 1 : -1;
+          X.P.spin = side * 0.2 * Math.sin(ph * Math.PI);
+          if (beat !== d.beat && X.P.ground) { d.beat = beat; if (X.settings().gravity) hopTo(x0 + side * sz * 0.12, 0.1 * sz); }
+          return beat >= beats && X.P.ground; }); } },
+      // hops along, trips over its own feet, sits there a second, shakes it off
+      trip: { energy: 1, gravity: true, run() { const dir = dirAway(), sz = X.size();
+        trick('trips', (t, dt, d) => {
+          if (!d.go) { d.go = 1; hopTo(X.face().x + dir * sz * 0.8, 0.3 * sz); return false; }
+          if (d.go === 1 && t > 0.15 && X.P.ground) { d.go = 2; d.t = t; if (free()) act(pick(['hurt', 'pout.short.meek', 'startle.small.surprised'])); }
+          if (d.go === 2) { const k = t - d.t; X.P.spin = dir * 0.95 * (k < 0.15 ? ease(k / 0.15) : k < 1.1 ? 1 : 1 - ease(Math.min(1, (k - 1.1) / 0.35))); X.P.lift = X.liftFor(X.P.spin);
+            if (k > 1.5) { X.bounce(-2); if (free()) act(pick(['wiggle', 'squishy.1.quick'])); return true; } }
+          return false; }); } },
+      // sneezes so hard it hops backwards
+      sneeze: { energy: 0.8, run() { const dir = dirAway(), sz = X.size();
+        if (free()) act(pick(['sneeze.big', 'sneeze', 'sneeze.huge']));
+        trick('sneezes', (t, dt, d) => {
+          if (!d.go && t > 0.55) { d.go = 1; X.bounce(-3); if (X.settings().gravity) hopTo(X.face().x - dir * sz * 0.35, 0.15 * sz); X.P.spin = -dir * 0.25; }
+          if (d.go) X.P.spin *= Math.exp(-dt * 5);
+          return t > 1.4 && X.P.ground; }); } },
+      // a big stretch
+      stretch: { energy: 0.5, run() { if (free()) act(pick(['stretch.small', 'stretch.big', 'yawn.small']));
+        trick('stretches', (t) => { X.squash(t < 0.25 ? 0.05 : t < 1.4 ? 0.2 : 0); return t > 1.8; }); } },
+      // flops over onto its side for a nap, then gets back up
+      nap: { energy: 0.2, calm: true, run() { const dir = Math.random() < 0.5 ? -1 : 1, nap = rr(6, 14);
+        trick('flops over for a nap', (t, dt, d) => {
+          if (!d.go) { d.go = 1; g.preview('sleepy', 1.2); }
+          const k = t < 0.5 ? ease(t / 0.5) : t < 0.5 + nap ? 1 : 1 - ease(Math.min(1, (t - 0.5 - nap) / 0.5));
+          X.P.spin = dir * Math.PI / 2 * k; X.P.lift = X.liftFor(X.P.spin);
+          if (d.go === 1 && t > 1.2) { d.go = 2; g.preview('asleep', nap - 0.7); }
+          if (d.go === 2 && t > 0.5 + nap) { d.go = 3; g.preview('waking', 0.9); }
+          if (t > 1.1 + nap) { X.bounce(-2); if (free()) act(pick(['stretch.small', 'yawn.small'])); return true; }
+          return false; }); } },
+      // climbs up the side of the screen, looks around up there, jumps off
+      climb: { energy: 1.4, gravity: true, wall: true, run() { const side = nearWall(); if (!side) return false;
+        const A = X.area(), sz = X.size(), list = []; let x = X.face().x; const edge = side < 0 ? A.left : A.right;
+        while (Math.abs(edge - x) > 2 && list.length < 12) { x += side * Math.min(sz * 0.9, Math.abs(edge - x)); list.push({ x, h: 0.25 * sz }); }
+        say('goes to climb the wall');
+        chain(list, () => { const s0 = X.size(), A2 = X.area(), wallX = side < 0 ? A2.screenL : A2.screenR, height = rr(0.3, 0.55) * (A2.floor - A2.top);
+          trick('climbs the wall', (t, dt, d) => { const P = X.P;
+            if (!d.go) { d.go = 1; d.y0 = P.y; }
+            if (d.go === 1) { const k = ease(Math.min(1, t / 0.35)); P.spin = -side * Math.PI / 2 * k; P.lift = X.liftFor(P.spin);
+              if (t >= 0.35) { d.go = 2; P.stick = true; P.y -= P.lift; P.lift = 0; d.y0 = P.y; P.x = wallX - side * (209 / 500) * s0; d.t = t; } return false; }
+            if (d.go === 2) { const k = (t - d.t) / (height / (s0 * 1.1)); const step = Math.floor(k * 6), ph = (k * 6) % 1;   // climbs in little pulls
+              P.y = d.y0 - height * Math.min(1, (step + ease(ph)) / 6); B.lookAt = { x: P.x, y: P.y - 300 };
+              if (k >= 1) { d.go = 3; d.t = t; B.lookAt = { x: P.x - side * 600, y: P.y + 100 }; if (free()) act(pick(['lookAround', 'wonder', 'proudNod.1'])); } return false; }
+            if (d.go === 3 && t - d.t > rr(1.5, 2.5)) { d.go = 4; d.t = t; P.stick = false; X.jump(-side * rr(500, 800), -rr(500, 800)); }
+            if (d.go === 4) { P.spin = -side * Math.PI / 2 * (1 - ease(Math.min(1, (t - d.t) / 0.45))); if (t - d.t > 0.2 && P.ground) { P.spin = 0; return true; } }
+            return false; }); });
+        return true; } },
+      // leaps up and grabs the top edge of the screen with its key ring, dangles there, lets go (wheee)
+      hang: { energy: 1.6, gravity: true, run() { const sz = X.size(), dir = dirAway();
+        trick('jumps up to hang from the top', (t, dt, d) => { const P = X.P, A = X.area();
+          if (!d.go) { d.go = 1; X.squash(-0.22); return false; }
+          if (d.go === 1 && t > 0.3) { d.go = 2; X.squash(0); leapAt({ x: X.face().x + dir * sz * 0.4, y: A.top - 10 }); g.preview('excited', 0.8); }
+          if (d.go === 2 && t > 0.4 && (P.y <= A.top + 3 || P.vy >= 0)) {
+            if (P.y > A.top + 60) return true;                      // didn't make it up there: oh well
+            d.go = 3; d.t = t; d.hold = rr(3, 6); P.stick = true; P.y = A.top; B.lookAt = { x: P.x, y: P.y + 500 };
+            if (free()) act(pick(['wonder', 'giggle.small', 'lookAround'])); }
+          if (d.go === 3) { const k = t - d.t; P.spin = 0.28 * Math.sin(k * 2.6) * Math.exp(-k / 2.5);
+            if (k > d.hold) { P.spin = 0; P.stick = false; P.self = false; P.ground = false; B.lookAt = null; return true; } }   // let go: a real fall
+          return false; }); } },
+    };
+    function randomTrick(force) {
+      const m = mood(), calmMood = ['sleepy', 'cozy', 'calm', 'dreamy', 'bored', 'cuddly'].indexOf(m) >= 0, grav = X.settings().gravity, e = energy();
+      const names = Object.keys(TRICKS).filter((n) => { const T = TRICKS[n]; return (!T.gravity || grav) && (!T.calm || calmMood); });
+      let name = force;
+      if (!name) {                                                 // energetic tricks in lively moods, gentle ones in calm moods
+        const w = names.map((n) => { const T = TRICKS[n]; return Math.exp(-Math.abs(Math.log((T.energy + 0.2) / (e + 0.2))) * 1.5) * (T.calm ? 2 : 1); });
+        let r = Math.random() * w.reduce((a, b) => a + b, 0); name = names[names.length - 1];
+        for (let i = 0; i < names.length; i++) { r -= w[i]; if (r <= 0) { name = names[i]; break; } }
+      }
+      if (!TRICKS[name]) return false;
+      return TRICKS[name].run() !== false;
     }
 
     // ── the mouse
@@ -242,11 +350,12 @@
       if (B.toss) stepToss(dt);
       if (B.stealing) holdCursor();
       if (B.st === 'hopping') { stepChain(); return; }
+      if (B.st === 'trick') { if (!B.trick || B.trick.step(t - B.trick.t0, dt, B.trick.d)) endTrick(); return; }
       if (!P.ground && X.settings().gravity) return;                // thrown: wait until it's down
       if (X.settings().mousePlay && mouseBits(dt)) return;
       if (X.settings().roam && t >= B.nextWhim) { B.nextWhim = t + rr(6, 20) / Math.max(0.25, energy()); whim(); }
     }
-    return { update, get lookAt() { return B.lookAt; }, get state() { return B.st; }, get stealing() { return !!B.stealing; }, B, whim, grab, runOff, leapToScreen,
+    return { update, get lookAt() { return B.lookAt; }, get state() { return B.st; }, get stealing() { return !!B.stealing; }, B, whim, grab, runOff, leapToScreen, trick: (n) => randomTrick(n), trickNames: Object.keys(TRICKS),
       hopIn: (x) => { if (B.st === 'idle') { say('hops back in'); chain([{ x, h: 0.3 * X.size() }]); } } };
   };
 })(typeof window !== 'undefined' ? window : globalThis);

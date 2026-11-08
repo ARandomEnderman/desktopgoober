@@ -151,6 +151,52 @@ const { chromium } = require('playwright');
     await q.close();
   }
 
+  // 8. every little event: runs, ends upright (no spin / lift / stuck), on screen, no errors
+  {
+    await p.mouse.move(600, 60); await setup('hyper', 2, []); await p.waitForTimeout(800);
+    const names = await p.evaluate(() => window.__goober.play.trickNames), bad = [];
+    for (const n of names) {
+      for (let w = 0; w < 60; w++) { if (await p.evaluate(() => window.__goober.play.state === 'idle' && window.__goober.P.ground)) break; await p.waitForTimeout(100); }
+      await drain();
+      const started = await p.evaluate((nm) => { const g = window.__goober.g; if (nm === 'nap') g.setMood('sleepy'); return window.__goober.play.trick(nm); }, n);
+      let done = false, shot = false;
+      for (let w = 0; w < 260 && !done; w++) {
+        await p.waitForTimeout(100);
+        if (out && !shot && w === 6) { shot = true; await p.screenshot({ path: path.join(out, 'trick-' + n + '.png') }); }
+        done = await p.evaluate(() => window.__goober.play.state === 'idle' && window.__goober.P.ground);
+      }
+      const st = await p.evaluate(() => { const { P } = window.__goober; return { spin: P.spin, lift: P.lift, stick: P.stick }; }), fn = await face();
+      const ok = started && done && st.spin === 0 && st.lift === 0 && !st.stick && fn.x > 0 && fn.x < 1200 && fn.y > 0 && fn.y < 720;
+      if (!ok) bad.push(n);
+      console.log((ok ? 'ok   ' : 'MISS ') + ('event: ' + n).padEnd(24), (await drain()).play.join(' · '));
+      await p.evaluate(() => { window.__goober.g.setMood('hyper'); });
+    }
+    if (bad.length) fails.push('events: ' + bad.join(','));
+  }
+
+  // 9. a throw keeps the speed of your flick
+  {
+    await setup('calm', 2, []); await p.waitForTimeout(800);
+    for (let w = 0; w < 60; w++) { if (await p.evaluate(() => window.__goober.play.state === 'idle' && window.__goober.P.ground)) break; await p.waitForTimeout(100); }
+    const f0 = await face(); const sx = f0.x > 600 ? -1 : 1;
+    await p.mouse.move(f0.x, f0.y); await p.mouse.down();
+    await p.mouse.move(f0.x, f0.y - 150, { steps: 5 }); await p.waitForTimeout(300);
+    const t0 = Date.now(); for (let i = 1; i <= 8; i++) { await p.mouse.move(f0.x + sx * i * 30, f0.y - 150 - i * 10); await p.waitForTimeout(16); }
+    const hand = 8 * Math.hypot(30, 10) / ((Date.now() - t0) / 1000);
+    await p.mouse.up();
+    const v = await p.evaluate(() => Math.hypot(window.__goober.P.vx, window.__goober.P.vy));
+    const ok = v > hand * 0.6; if (!ok) fails.push('throw speed');
+    console.log((ok ? 'ok   ' : 'MISS ') + 'throw keeps its speed'.padEnd(24), 'hand ≈ ' + Math.round(hand) + ' px/s, goober leaves at ' + Math.round(v) + ' px/s');
+  }
+
+  // 10. hatching a new goober always changes its eyes (and rolls a new personality); the menu info follows
+  {
+    const seen = [];
+    for (let i = 0; i < 6; i++) { seen.push(await p.evaluate(() => { const G = window.__goober; G.hatch(); return G.g.look.type + '/' + G.g.personality.name + '/' + (window.__info && window.__info.eyes); })); await p.waitForTimeout(300); }
+    const eyes = seen.map((x) => x.split('/')[0]), ok = eyes.every((e, i) => i === 0 || e !== eyes[i - 1]) && seen.every((x) => x.split('/')[0] === x.split('/')[2]);
+    if (!ok) fails.push('hatch'); console.log((ok ? 'ok   ' : 'MISS ') + 'hatch changes it'.padEnd(24), seen.join(' → '));
+  }
+
   if (out && strip.length) {
     const imgs = strip.map((buf) => 'data:image/png;base64,' + buf.toString('base64'));
     const q = await b.newPage({ viewport: { width: 1200, height: 376 * 2 } });

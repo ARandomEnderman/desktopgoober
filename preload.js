@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('pet', {
   ignore: (on) => ipcRenderer.send('ignore', on),
   cursorTo: (x, y) => ipcRenderer.send('cursorTo', x, y),
   save: (patch) => ipcRenderer.send('save', patch),
+  info: (v) => ipcRenderer.send('info', v),
   menu: () => ipcRenderer.send('menu'),
   on: (ch, fn) => ipcRenderer.on(ch, (e, v) => fn(v)),
 });

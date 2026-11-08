@@ -98,6 +98,8 @@ ipcMain.on('move', (e, x, y) => { if (win) win.setBounds({ x: Math.round(x), y: 
 ipcMain.on('ignore', (e, on) => { if (win) win.setIgnoreMouseEvents(!!on, { forward: true }); });
 ipcMain.on('cursorTo', (e, x, y) => { if (S.steal) moveCursor(x, y); });
 ipcMain.on('save', (e, patch) => save(patch));
+let info = null;                                                  // who the goober is (from pet.js): shown in the menu
+ipcMain.on('info', (e, v) => { info = v; updateTray(); });
 ipcMain.on('menu', () => buildMenu().popup({ window: win }));
 
 function set(patch) { save(patch); send('settings', S); updateTray(); }
@@ -107,6 +109,13 @@ function buildMenu() {
   const check = (key, label, extra) => ({ label, type: 'checkbox', checked: !!S[key], click: (m) => { set({ [key]: m.checked }); if (extra) extra(m.checked); } });
   return Menu.buildFromTemplate([
     { label: 'goober ' + app.getVersion(), enabled: false },
+    ...(info ? [{ label: 'This goober: ' + info.personality, submenu: [
+      { label: 'Personality: ' + info.personality + ' (' + info.kind + ')', enabled: false },
+      { label: 'Eyes: ' + info.eyes + ' · colour: ' + info.colour, enabled: false },
+      { label: 'Mood right now: ' + info.mood, enabled: false },
+      { label: info.id, enabled: false }] }] : []),
+    { type: 'separator' },
+    { label: 'Show the battery', click: () => send('gesture', 'thumbsup') },
     { type: 'separator' },
     check('roam', 'Hops around by itself'),
     check('mousePlay', 'Plays with the mouse'),

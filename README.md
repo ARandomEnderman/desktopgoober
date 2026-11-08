@@ -42,6 +42,15 @@ sight: if it ever ends up off the screen it drops back in on the main one, and s
 running brings it back too. It squashes and
 stretches and leans into its jumps.
 
+**Little events** it does now and then (lively ones in lively moods, gentle ones in calm moods): flips, zoomies,
+rolling along the floor, spinning on the spot, little dances, tripping over, sneezing itself backwards, big stretches,
+flopping over for a nap, climbing up the side of the screen, and jumping up to hang from the top edge by its key ring
+until it lets go (wheee).
+
+**Arm lights**: the 3 lights on its arm are a battery gauge in its eye colour. If your computer has a battery, that's
+the one it shows: right-click → "Show the battery", or plug the charger in (it does its wall-eyed charging stare for a
+few seconds).
+
 **With your mouse**
 | you | goober |
 |---|---|
@@ -57,9 +66,9 @@ stretches and leans into its jumps.
 
 At night (23–07) it gets sleepy and sleeps; it wakes in the morning or with a double knock.
 
-**Right-click menu** (on goober or the tray icon): hops around by itself, plays with the mouse, allowed to steal the
+**Right-click menu** (on goober or the tray icon): who this goober is (personality, eyes, colour, mood, ID), show the battery, hops around by itself, plays with the mouse, allowed to steal the
 mouse, fall to the taskbar (off = it floats where you put it), sleep at night, size, body colour, always on top, start
-with the computer, copy / load goober ID, hatch a new goober, bring it back on screen.
+with the computer, copy / load goober ID, hatch a new goober (always new eyes, a new personality and colour), bring it back on screen.
 
 Stealing the cursor uses what each system already has: PowerShell on Windows, JavaScript for Automation on macOS,
 `xdotool` on Linux (if installed; otherwise that option is greyed out).
