@@ -27,7 +27,8 @@ function save(patch) {
 const winSize = () => Math.round(SIZES[S.size] * 2.1);      // room for goober to swing round wherever you grab it
 let win = null, tray = null;
 
-function displays() { return screen.getAllDisplays().map((d) => d.workArea); }
+// work areas of all screens, the main screen first (goober starts and is brought back there)
+function displays() { const p = screen.getPrimaryDisplay().id; return screen.getAllDisplays().sort((a, b) => (b.id === p) - (a.id === p)).map((d) => d.workArea); }
 const send = (ch, v) => { if (win && !win.isDestroyed()) win.webContents.send(ch, v); };
 
 // ── moving the real cursor (goober grabs it and drags it about). Electron can't do this itself, so a small helper
@@ -168,7 +169,17 @@ function updateItems() {
   return items;
 }
 
-app.whenReady().then(() => {
+// One goober at a time. After an update the installer starts the new version while the old one is still closing,
+// so don't give up at once: keep asking for the lock for up to 10 s (giving up straight away is how goober went
+// missing after the first update). Starting goober again while it runs brings it back on screen.
+function whenSingle(cb, tries) {
+  if (app.requestSingleInstanceLock()) return cb();
+  if (tries <= 0) return app.quit();
+  setTimeout(() => whenSingle(cb, tries - 1), 500);
+}
+app.on('second-instance', () => send('home', 1));
+app.whenReady().then(() => whenSingle(start, 20));
+function start() {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
   startMouseHelper();
   createWindow();
@@ -181,7 +192,6 @@ app.whenReady().then(() => {
   screen.on('display-added', () => send('displays', displays()));
   screen.on('display-removed', () => send('displays', displays()));
   screen.on('display-metrics-changed', () => send('displays', displays()));
-});
+}
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => { if (mouse.proc) { try { mouse.proc.stdin.end(); mouse.proc.kill(); } catch (e) { /* gone */ } } });
-if (!app.requestSingleInstanceLock()) app.quit();

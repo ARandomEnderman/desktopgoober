@@ -2,7 +2,7 @@
  * the window is the body. Drag it, throw it, it falls onto the taskbar (free fall + landing go into the fake
  * accelerometer, so it goes "wheee" and lands starstruck or tumbles), click = a knock on its back, the mouse
  * cursor stands in for the camera's "someone in view", and the clock dims the light at night so it sleeps.
- * What it does with its body by itself (hops, leaps, peeking, playing with the mouse) is in play.js.
+ * What it does with its body by itself (hops, leaps, playing with the mouse) is in play.js.
  *
  * In Electron the window moves around the real screen (main.js). Opened in a plain browser it fakes a desktop
  * inside the page, so it can be tried and tested without Electron.
@@ -31,7 +31,7 @@
   const EXT = { top: -26, bottom: 471, left: 11, right: 489 };    // the body's extent in device units (ring and stroke included)
   const SCREEN_C = { x: 250, y: 262 };                             // centre of the round screen, device units
   let grab = { x: 250, y: 262 };                                   // pivot, device units
-  const P = { x: 0, y: 0, vx: 0, vy: 0, rot: 0, rotV: 0, held: false, ground: false, self: false, outL: 0, outR: 0 };  // P.x/y = pivot on screen; self = its own hop
+  const P = { x: 0, y: 0, vx: 0, vy: 0, rot: 0, rotV: 0, held: false, ground: false, self: false };  // P.x/y = pivot on screen; self = its own hop
   const dev = $('device'), win = $('win'), cv = $('screen'), ctx = cv.getContext('2d');
   let img = null, RES = 0;
 
@@ -102,7 +102,7 @@
     if (e.button !== 0) return;
     dev.setPointerCapture(e.pointerId); const p = pt(e), u = toDevice(p.x, p.y);
     down = { x: p.x, y: p.y, t: performance.now(), moved: false };
-    repivot(u.x, u.y); P.held = true; P.self = false; P.vx = P.vy = 0; P.outL = P.outR = 0; host.ignore(false);
+    repivot(u.x, u.y); P.held = true; P.self = false; P.vx = P.vy = 0; host.ignore(false);
     resetImu(); dev.classList.add('dragging');
   });
   dev.addEventListener('pointermove', (e) => {
@@ -143,7 +143,7 @@
   // ── menu commands (main.js)
   host.on('reroll', () => { g.rollGoober(); host.save({ id: g.id }); });
   host.on('loadId', (str) => { const r = g.setId(str); if (r.ok) host.save({ id: g.id }); });
-  host.on('home', () => { home(true); P.outL = P.outR = 0; });
+  host.on('home', () => { home(true); });
   host.on('displays', (d) => { displays = d; });
   host.on('settings', (v) => { const sizeWas = S.size; S = v; applyBody(); if (S.size !== sizeWas) { const c = centre(); applySize(); grab = { x: 250, y: 250 }; P.x = c.x; P.y = c.y; P.rot = P.rotV = 0; P.ground = false; } });
 
@@ -202,7 +202,7 @@
     P.rotV += (-60 * (P.rot - lean) - 11 * P.rotV) * dt; P.rot += P.rotV * dt;
     const d = displayAt(P.x, P.y), e = edges();
     const floor = d.y + d.height - e.bottom, top = d.y - e.top, bottomY = P.y + e.bottom;
-    const left = neighbor(d, -1, bottomY) ? -Infinity : d.x - e.left - P.outL, right = neighbor(d, 1, bottomY) ? Infinity : d.x + d.width - e.right + P.outR;
+    const left = neighbor(d, -1, bottomY) ? -Infinity : d.x - e.left, right = neighbor(d, 1, bottomY) ? Infinity : d.x + d.width - e.right;
     if (S.gravity) {
       if (!P.ground) P.vy += G * dt;
       P.x += P.vx * dt; P.y += P.vy * dt;
@@ -247,11 +247,32 @@
       return { left: d.x + (SCREEN_C.x - EXT.left) * s, right: d.x + d.width - (EXT.right - SCREEN_C.x) * s,
         top: d.y + (SCREEN_C.y - EXT.top) * s, floor: d.y + d.height - (EXT.bottom - SCREEN_C.y) * s, screenL: d.x, screenR: d.x + d.width,
         openL: !!neighbor(d, -1), openR: !!neighbor(d, 1) }; },
-    jump, squash: (v) => { SQ.t = v; }, setOut: (l, r) => { P.outL = l; P.outR = r; },
+    jump, squash: (v) => { SQ.t = v; }, bounce: (v) => { SQ.v += v; },
     cursorTo: (x, y) => host.cursorTo && host.cursorTo(x, y), canSteal: () => !!init.canSteal,
     cursor: { get pos() { return cursor; }, vel: cursorVel, still: () => nowS() - cursorMoved,
       get over() { return !!cursor && !down && overBody(cursor.x, cursor.y); } },
   });
+
+  // ── never lost, never half off the screen
+  // · a broken position (NaN) or the body's middle off every screen for 3 s (a screen unplugged, a bad throw):
+  //   it drops back in on the main screen
+  // · sitting still with part of its body off the screen: it hops back in
+  // · resting with a squash left over: it relaxes (only a crouch before a hop should hold a squash)
+  let lostT = 0, outT = 0;
+  function keepInSight(dt) {
+    if (!Number.isFinite(P.x) || !Number.isFinite(P.y) || !Number.isFinite(P.rot)) { home(true); return; }
+    if (P.held) { lostT = outT = 0; return; }
+    const c = centre(), on = displays.some((d) => c.x >= d.x && c.x <= d.x + d.width && c.y >= d.y - 60 && c.y <= d.y + d.height);
+    lostT = on ? 0 : lostT + dt;
+    if (lostT > 3) { lostT = 0; home(true); return; }
+    if (!P.ground || play.state !== 'idle') { outT = 0; return; }
+    if (SQ.t !== 0) SQ.t = 0;
+    const d = displayAt(c.x, c.y), e = edges();
+    const offL = d.x - (P.x + e.left), offR = (P.x + e.right) - (d.x + d.width);
+    const open = (side) => !!neighbor(d, side, P.y + e.bottom);
+    outT = (offL > 2 && !open(-1)) || (offR > 2 && !open(1)) ? outT + dt : 0;
+    if (outT > 0.6) { outT = 0; const sz = SIZES[S.size]; play.hopIn(offL > 2 ? c.x + offL + sz * 0.3 : c.x - offR - sz * 0.3); }
+  }
 
   // ── light: the room, unless it's night (fades over a couple of minutes so it notices "dark", not "covered")
   let light = 0.6;
@@ -295,6 +316,7 @@
     const now = nowS(), dt = Math.min(0.05, Math.max(0.001, now - last)); last = now;
     play.update(dt);
     physics(dt);
+    keepInSight(dt);
     squashStep(dt);
     const imu = feelImu(dt);
     // what it looks at: where it's hopping / what it's after (play.js), else the cursor like a person in view
@@ -317,11 +339,11 @@
 
     // remember where it sits
     saveT += dt;
-    if (saveT > 2 && !P.held && Math.hypot(P.x - saved.x, P.y - saved.y) > 2) { saveT = 0; saved = { x: P.x, y: P.y }; host.save({ x: P.x, y: P.y }); }
+    if (saveT > 2 && !P.held && P.ground && Math.hypot(P.x - saved.x, P.y - saved.y) > 2) { saveT = 0; saved = { x: P.x, y: P.y }; host.save({ x: P.x, y: P.y }); }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__goober = { g, P, play, watch, get grab() { return grab; } };   // for tools/check.js and tools/play.js
+  window.__goober = { g, P, play, watch, SQ, get grab() { return grab; } };   // for tools/check.js and tools/play.js
 
   // ── a pretend desktop for plain browsers (no Electron): the page is the screen, #win is the window
   function fakeHost() {

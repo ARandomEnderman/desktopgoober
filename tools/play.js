@@ -1,6 +1,6 @@
 // node tools/play.js [out-dir] → the desktop pet's play (play.js), headless in browser-preview mode:
 // hops by itself, pounces on a still cursor and steals it, lets go when you pull it back, nuzzles when you rub the
-// cursor over it, dodges a fast swipe, peeks in from the edge. Prints what happened; fails on page errors or if a
+// cursor over it, dodges a fast swipe, stays in sight, leaps between two screens. Prints what happened; fails on page errors or if a
 // behaviour never shows up. With out-dir, saves screenshots and a filmstrip of a hop (hop-strip.png).
 const path = require('path');
 const { chromium } = require('playwright');
@@ -106,15 +106,28 @@ const { chromium } = require('playwright');
   }
   if (!ok5) fails.push('dodge'); console.log((ok5 ? 'ok   ' : 'MISS ') + 'dodge');
 
-  // 6. peek in from the edge, then come back when the cursor comes near
-  await p.mouse.move(600, 100); await setup('shy', 1, []); await p.waitForTimeout(1500); await drain();
-  await p.evaluate(() => window.__goober.play.peek());
-  await expect('peeking', /goes to peek/, 1000);
-  let fp = await face(), half = false;                 // hops to the edge, then slides out: watch for it for up to 8 s
-  for (let i = 0; i < 40 && !half; i++) { await p.waitForTimeout(200); fp = await face(); half = fp.x < 40 || fp.x > 1160; }
-  await p.waitForTimeout(300);
-  if (!half) fails.push('half off screen'); console.log((half ? 'ok   ' : 'MISS ') + 'half off screen', JSON.stringify(fp));
-  if (out) await p.screenshot({ path: path.join(out, 'play-peek.png') });
+  // 6. it stays in sight: no squash left after big leaps; half off the edge → hops back in; lost / broken → comes back
+  await p.mouse.move(600, 100); await setup('hyper', 2, []); await p.waitForTimeout(1500); await drain();
+  let sqMax = 0;
+  for (let k = 0; k < 3; k++) {
+    await p.evaluate(() => { const A = window.__goober; A.play.B.nextWhim = 1e9; });
+    for (let w = 0; w < 30; w++) { if (await p.evaluate(() => window.__goober.play.state === 'idle' && window.__goober.P.ground)) break; await p.waitForTimeout(100); }
+    // force a big leap (the whim that used to leave it squashed)
+    await p.evaluate(() => { const r = Math.random; Math.random = () => 0.6; try { window.__goober.play.whim(); } finally { Math.random = r; } });
+    await p.waitForTimeout(2600);
+    sqMax = Math.max(sqMax, await p.evaluate(() => Math.abs(window.__goober.SQ.x)));
+  }
+  const relaxed = sqMax < 0.03; if (!relaxed) fails.push('relaxes after leaps');
+  console.log((relaxed ? 'ok   ' : 'MISS ') + 'relaxes after leaps'.padEnd(24), 'leftover squash', sqMax.toFixed(3));
+  await p.evaluate(() => { const { P } = window.__goober; P.x = 20; P.ground = true; P.vx = P.vy = 0; });    // half off the left edge
+  let back = false;
+  for (let w = 0; w < 30 && !back; w++) { await p.waitForTimeout(100); back = (await face()).x > 95; }
+  if (!back) fails.push('hops back in'); console.log((back ? 'ok   ' : 'MISS ') + 'hops back in from the edge', JSON.stringify(await face()));
+  await p.evaluate(() => { window.__goober.P.x = NaN; });
+  await p.waitForTimeout(1500); let fb = await face(); const okNaN = Number.isFinite(fb.x) && fb.x > 0 && fb.x < 1200;
+  await p.evaluate(() => { const { P } = window.__goober; P.x = -3000; P.y = 300; P.vx = P.vy = 0; });
+  await p.waitForTimeout(4500); fb = await face(); const okLost = fb.x > 0 && fb.x < 1200 && fb.y > 0 && fb.y < 720;
+  if (!okNaN || !okLost) fails.push('comes back'); console.log((okNaN && okLost ? 'ok   ' : 'MISS ') + 'comes back when lost', JSON.stringify(fb));
 
   // 7. two screens side by side (?screens=2; the right one has a higher floor): leap over and back
   {

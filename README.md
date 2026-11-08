@@ -37,8 +37,9 @@ npm start
 
 ## What it does
 **By itself** (more or less often depending on its mood and personality): hops about in little chains, boings in
-place, takes big leaps across the screen (and over to your other screen, if you have more than one), and slides half
-off the screen edge to peek back in. It squashes and
+place, takes big leaps across the screen (and over to your other screen, if you have more than one). It always stays in
+sight: if it ever ends up off the screen it drops back in on the main one, and starting goober again while it's
+running brings it back too. It squashes and
 stretches and leans into its jumps.
 
 **With your mouse**
@@ -69,11 +70,11 @@ Stealing the cursor uses what each system already has: PowerShell on Windows, Ja
 - `pet.js`: the body. The window is goober: it moves the window, runs the physics (gravity, landing, pendulum swing
   round the grab point, squash & stretch) and turns that into a fake accelerometer for the engine (±2 g, free fall ≈ 0 g).
   The empty corners of the window let clicks through.
-- `play.js`: what it does with its body: hops, leaps, peeking, and everything with the mouse.
+- `play.js`: what it does with its body: hops, leaps, and everything with the mouse.
 - `pet.html`: the star body + the round screen canvas.
 - `engine/goober.js`: the eyes, moods, personality and IDs (a copy; `node tools/sync-engine.js` refreshes it).
 - Tests (headless, browser preview, need Playwright): `node tools/check.js` (drop, land, hang, throw, knock, shake),
-  `node tools/play.js` (hops, pounce, steal, pull back, nuzzle, dodge, peek). Both take an output folder for screenshots.
+  `node tools/play.js` (watching, hops, pounce, steal, pull back, nuzzle, dodge, staying in sight, two screens). Both take an output folder for screenshots.
 
 - Releases: `.github/workflows/release.yml` builds Windows / macOS / Linux on every push to `main` (version
   `0.2.<run number>`) and publishes them; `electron-updater` in `main.js` picks them up.

@@ -2,7 +2,7 @@
  * The eyes are still all goober.js (moods, faces, animations); this only decides where the body goes and, through
  * the engine's public act()/preview() and the "someone in view" input, what it looks at and how it reacts.
  *
- *   by itself   hop chains, boings in place, big leaps across the screen, peeking in from the screen edge
+ *   by itself   hop chains, boings in place, big leaps across the screen (and onto the next screen)
  *   the mouse   hops over to the cursor, pounces on it when it sits still, boops it, runs away from fast swipes,
  *               nuzzles into it when you rub it over goober, and now and then grabs it and drags it off
  * How often depends on the mood and the personality (chill → hyper, cute → feisty).
@@ -22,7 +22,7 @@
   const SKITTISH = { shy: 0.9, anxious: 1, sleepy: 0.5, sulky: 0.6, cozy: 0.4, calm: 0.3, dreamy: 0.3 };       // others ~0.2
 
   root.GooberPlay = function (X) {
-    // X: { g, P, G, now(), size(), face(), area(), jump(vx, vy), squash(v), lean(r), setOut(l, r), cursorTo(x, y),
+    // X: { g, P, G, now(), size(), face(), area(pt), jump(vx, vy), squash(target), bounce(impulse), cursorTo(x, y),
     //      canSteal(), settings(), cursor: { pos, vel, still(), over } }
     const g = X.g;
     const B = { st: 'idle', hops: [], nextWhim: X.now() + rr(4, 9), cd: {}, rubT: 0, hoverT: 0, lookAt: null, msg: '' };
@@ -58,7 +58,7 @@
       const x = rr(B2.left + (B2.right - B2.left) * 0.15, B2.right - (B2.right - B2.left) * 0.15);
       say('leaps to the other screen');
       chain([{ x, h: rr(1.6, 2.8) * sz, crouch: 0.32, onLaunch: () => g.preview('excited', 1.1),
-        onLand: () => { X.squash(-0.28); if (free()) act(pick(['giggle.small', 'proudNod.1', 'lookAround', 'hop.1.joy'])); } }]);
+        onLand: () => { X.bounce(-3.5); if (free()) act(pick(['giggle.small', 'proudNod.1', 'lookAround', 'hop.1.joy'])); } }]);
       return true;
     }
     // a leap whose top is at point q (so the face goes through it)
@@ -94,7 +94,7 @@
     // ── things it does by itself
     function whim() {
       const A = X.area(), C = X.face(), sz = X.size(), e = energy();
-      const roll = Math.random(), skittish = SKITTISH[mood()] || 0.2;
+      const roll = Math.random();
       const away = C.x - A.left < sz * 1.5 ? 1 : A.right - C.x < sz * 1.5 ? -1 : (Math.random() < 0.5 ? -1 : 1);
       if (roll < 0.42) {                                           // a little wander: 1–4 hops one way
         const n = 1 + Math.floor(Math.random() * Math.min(4, 1 + e * 1.6)), dir = away, list = [];
@@ -109,38 +109,10 @@
         const x = rr(A.left, A.right), h = rr(1.2, 2.4) * sz;
         say('big leap');
         chain([{ x, h, crouch: 0.28, onLaunch: () => g.preview('excited', 0.9),
-          onLand: () => { X.squash(-0.25); if (free()) act(pick(['giggle.small', 'proudNod.1', 'squishy.1.quick', 'hop.1.joy'])); } }]);
-      } else if (roll < 0.74 + 0.12 * (0.5 + skittish) && peek() !== false) {   // go and peek in from the edge of the screen
-
+          onLand: () => { X.bounce(-3); if (free()) act(pick(['giggle.small', 'proudNod.1', 'squishy.1.quick', 'hop.1.joy'])); } }]);
       } else {                                                     // just looks around
         if (free()) act(pick(['lookAround', 'lookAroundSlow.2', 'stretch.small', 'wiggle']));
         say('looks around');
-      }
-    }
-
-    // ── peek: hop to the nearest side, slide half out of the screen, look back in, come back later (or when you come near)
-    function peek() {
-      const A = X.area(), C = X.face(), sz = X.size();
-      // only at an outer edge of the desktop (an edge with another screen beyond it isn't an edge to peek round)
-      if (A.openL && A.openR) return false;
-      const side = A.openL ? 1 : A.openR ? -1 : C.x - A.left < A.right - C.x ? -1 : 1;
-      const edgeX = side < 0 ? A.left : A.right, list = []; let x = C.x;
-      while (Math.abs(edgeX - x) > 2 && list.length < 9) { x += side * Math.min(sz * 0.9, Math.abs(edgeX - x)); list.push({ x, h: 0.25 * sz }); }
-      say('goes to peek'); chain(list, () => { B.st = 'peek'; B.side = side; B.peekT = X.now() + rr(5, 12); B.slide = 0; });
-    }
-    function stepPeek(dt) {
-      // slide out until the face centre is just inside the screen edge: half the screen (one eye) still peeks in
-      const sz = X.size(), out = Math.max(0, (B.side < 0 ? X.area().left - X.area().screenL : X.area().screenR - X.area().right) - 0.08 * sz), cur = X.cursor;
-      B.slide = Math.min(1, B.slide + dt / 0.9);
-      X.setOut(B.side < 0 ? out * B.slide : 0, B.side > 0 ? out * B.slide : 0);
-      X.P.x += B.side * out * (dt / 0.9) * (B.slide < 1 ? 1 : 0);
-      const C = X.face(); B.lookAt = { x: C.x - B.side * 600, y: C.y - 80 };           // looks back into the screen
-      const near = cur.pos && cur.still() < 2 && Math.hypot(cur.pos.x - C.x, cur.pos.y - C.y) < sz * 1.6;
-      if (X.now() > B.peekT || near) {
-        X.setOut(0, 0); B.st = 'idle'; B.lookAt = null;
-        if (near && free()) act('peekabooFound');
-        const A = X.area(); chain([{ x: clamp(C.x - B.side * sz * 1.4, A.left, A.right), h: 0.45 * sz, crouch: 0.2 }]);
-        say(near ? 'peekaboo!' : 'comes back');
       }
     }
 
@@ -215,7 +187,7 @@
       say('steals the cursor!'); cd('steal', rr(90, 240));
       if (free()) act(pick(['mischief', 'scheme']));
       B.steal = { dir, t0: X.now(), from: { x: from.x, y: from.y }, sets: [], pull: 0, seen: null };
-      B.stealing = true; X.squash(-0.12); setTimeout(() => X.squash(0), 120);   // a little "got it!" squeeze
+      B.stealing = true; X.bounce(-2);   // a little "got it!" squeeze
     }
     function runOff() {                                           // after landing with it: hop away, then toss it
       const C = X.face(), sz = X.size(), dir = B.steal.dir; let x = C.x;
@@ -263,18 +235,18 @@
       const t = X.now(), P = X.P;
       if (P.held || g.mode !== 'awake') {                          // in your hand, asleep or waking: the body is yours
         if (B.stealing) letGo(false);
-        if (B.st !== 'idle') { cancel(); X.setOut(0, 0); }
+        if (B.st !== 'idle') cancel();
         B.nextWhim = Math.max(B.nextWhim, t + rr(3, 6));
         return;
       }
       if (B.toss) stepToss(dt);
       if (B.stealing) holdCursor();
       if (B.st === 'hopping') { stepChain(); return; }
-      if (B.st === 'peek') { stepPeek(dt); return; }
       if (!P.ground && X.settings().gravity) return;                // thrown: wait until it's down
       if (X.settings().mousePlay && mouseBits(dt)) return;
       if (X.settings().roam && t >= B.nextWhim) { B.nextWhim = t + rr(6, 20) / Math.max(0.25, energy()); whim(); }
     }
-    return { update, get lookAt() { return B.lookAt; }, get state() { return B.st; }, get stealing() { return !!B.stealing; }, B, peek, whim, grab, runOff, leapToScreen };
+    return { update, get lookAt() { return B.lookAt; }, get state() { return B.st; }, get stealing() { return !!B.stealing; }, B, whim, grab, runOff, leapToScreen,
+      hopIn: (x) => { if (B.st === 'idle') { say('hops back in'); chain([{ x, h: 0.3 * X.size() }]); } } };
   };
 })(typeof window !== 'undefined' ? window : globalThis);
