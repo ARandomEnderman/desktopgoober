@@ -151,7 +151,7 @@
   }
 
   // ── menu commands (main.js)
-  // hatch a new goober: everything is rolled again (personality, eyes, colour, the rest of its DNA). The eye type is
+  // hatch a new goober: everything is rolled again (eyes, colour, the rest of its DNA). The eye type is
   // rolled until it differs from the old one, so you can always see it's someone new; then a little hatch moment.
   host.on('reroll', () => hatch());
   function hatch() {
@@ -162,10 +162,9 @@
     g.preview('starstruck', 1.6);
   }
   // what's shown at the top of the menu: who this goober is
-  const ROWS = ['very cute', 'cute', 'in between', 'feisty', 'very feisty'], COLS = ['very chill', 'chill', 'in between', 'hyper', 'very hyper'];
   let infoKey = '';
   function sendInfo(force) {
-    const p = g.personality, info = { personality: p.name, kind: ROWS[p.row] + ', ' + COLS[p.col], eyes: g.look.type, colour: g.look.swatch, mood: g.mood, id: g.id };
+    const info = { eyes: g.look.type, colour: g.look.swatch, mood: g.mood, id: g.id };
     const k = JSON.stringify(info); if (!force && k === infoKey) return; infoKey = k;
     if (host.info) host.info(info);
   }

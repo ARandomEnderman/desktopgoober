@@ -29,7 +29,12 @@
   const SW = 240, SH = 240, MID = 120;
   const FLOAT_T = 2.85, FLOAT_A = 6.1; // the constant up-and-down float (seconds per bob, px at 240)
   const PUPIL_DEPTH = 11; // px behind the card the pupils sit (parallax)
-  const R0 = 44, SPACING = 51.7, N = 32, PA = 1.12; // measured from hi-res reference shots at 240 px: eye ≈ 93.5×105.5, centres ±51.7, round pupil ≈ 47
+  // eye size + spacing at 240 px: the eyes site's rest pose, measured from hi-res reference shots (eye ≈ 93.5×105.5, centres
+  // ±51.7, round pupil ≈ 47). (Lark-sized small eyes were tried 2026-11-10; the user wants these back as the idle eyes.)
+  // SHAPE (2026-11-10, user: "two boring ovals"): on 24 eyes of the eyes-site screenshots the long axis LEANS ~20° OUTWARD at
+  // the top (no egg bulge); EYE_LEAN tilts every eye that way at draw time.
+  let YAW_SIGN = 1, PITCH_SIGN = -1;   // gyro → face-plane counter-turn (checked in the sim: the face keeps facing you)
+  const R0 = 44, SPACING = 51.7, N = 32, PA = 1.12, REST_Y = 0, EYE_ASPECT = 1, EYE_LEAN = 0.33;
   const A0 = 0.6, RF = SPACING / Math.sin(A0), RFV = 128;
   const PAL = { eye: [184, 207, 252], pupil: [22, 66, 160], pupilR: null, shine: [255, 255, 255], accent: [184, 207, 252] };
   const hx = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
@@ -320,7 +325,7 @@
     sniffle: () => [S('teary', 2.4)],
     cry: () => [S('teary', 4)],
     worry: () => [S('worried', 2.6, null, { blink: true })],
-    startle: (g) => [S('shocked', 0.7, [0, 0], { run: () => g.pop(2.5) }), S('worried', 1.0)],
+    startle: (g) => [S('shocked', 0.7, [0, 0], { run: () => { g.pop(2.5); g.startleUntil = g.t + 0.8; } }), S('worried', 1.0)],
     hiccup: (g, f) => [S(f, 0.5, null, { run: () => { g.kick(0, -110); g.blink(0.7); } }), S(f, 0.8), S(f, 0.5, null, { run: () => { g.kick(0, -110); g.blink(0.7); } })],
     sneeze: (g) => [S('squint', 0.5), S('squint', 0.4), S('wince', 0.35, null, { run: () => { g.pop(-5); g.kick(0, 180); } }), S('surprised', 0.6)],
     yawn: () => [S('squint', 0.5), S('yawn', 1.6), S('squint', 0.5), S('drowsy', 1.6)],
@@ -616,7 +621,7 @@
   for (const [dn, v] of Object.entries(DIRS))
     add(`fret.${dn}`, 'fret', 'worried', 2, (g, f) => [S('worried', 0.5, v, { size: [0.95, 0.95], turn: turnOf(v) }), S('worried', 0.4, [0, 0], { turn: 0 }), S('nervous', 0.5, v, { size: [0.93, 0.93], turn: turnOf(v) }), S('meek', 1, [0, 0.2], { turn: 0 })]);
   for (const [zn, k] of Object.entries({ small: 0.7, big: 1.2 })) for (const face of ['worried', 'scared', 'surprised'])
-    add(`startle.${zn}.${face}`, 'fret', face, 2, (g, f) => [S(face, 0.6, [0, 0], { size: [1.02, 1 + 0.12 * k], run: () => g.pop(1.6 * k) }), S('meek', 1.4, [0, 0.2], { size: [0.94, 0.92] }), S(f, 0.6)]);
+    add(`startle.${zn}.${face}`, 'fret', face, 2, (g, f) => [S(face, 0.6, [0, 0], { size: [1.02, 1 + 0.12 * k], run: () => { g.pop(1.6 * k); g.startleUntil = g.t + 0.6; } }), S('meek', 1.4, [0, 0.2], { size: [0.94, 0.92] }), S(f, 0.6)]);
   for (const sd of ['left', 'right']) for (const n of [1, 2])
     add(`checkBehind.${sd}.${n}`, 'fret', 'nervous', 2, (g, f) => { const k = sideOf(sd), st = []; for (let i = 0; i < n; i++) st.push(S('nervous', 0.9, [k * 0.85, 0], { turn: k * 0.6, blink: true }), S('worried', 0.6, [0, 0], { turn: 0 })); st.push(S(f, 0.6)); return st; });
   for (const [ln, d] of Object.entries({ short: 1.6, long: 3 })) add(`tremble.${ln}`, 'fret', 'nervous', 1, (g, f) => [S('nervous', d, [0, 0.15], { size: [0.94, 0.94] }), S(f, 0.7, null, { blink: true })]);
@@ -741,29 +746,13 @@
   // older moods borrow a few of the new families
   for (const [m, fs] of Object.entries({ happy: ['cuddle'], playful: ['silly'], hyper: ['silly'], grumpy: ['sulk'], shy: ['fret', 'cozy'], sleepy: ['cozy', 'bored'], sassy: ['proud'], curious: ['busy'], calm: ['cozy'], dreamy: ['cozy', 'cuddle'] }))
     MOODS[m].fams.push(...fs);
-  // ───────────────────────────── PERSONALITY ─────────────────────────────
-  // where each mood sits on the personality grid (x: chill → hyper, y: cute → feisty)
+  // where each mood sits on a cute/feisty × chill/hyper map: only used to spread the mood odds a little
   const MOOD_AT = { cuddly: [-0.2, -0.9], silly: [0.8, -0.2], anxious: [0.6, 0.3], proud: [0, 0.6], busy: [0.1, 0.4], bored: [-0.8, 0.4], sulky: [-0.5, 0.6], cozy: [-0.9, -0.5],
     calm: [-0.6, -0.1], happy: [0.3, -0.6], sleepy: [-0.9, 0], grumpy: [-0.3, 0.9], curious: [0.3, 0], playful: [0.7, 0.1],
     shy: [-0.4, -0.9], dreamy: [-0.6, -0.6], hyper: [1, 0], sassy: [0.2, 0.8] };
-  // how feisty (+) or cute (−) a face is
-  const FEIST = { angry: 1, furious: 1, grumpy: 0.9, annoyed: 0.8, smug: 0.8, unimpressed: 0.7, suspicious: 0.7, determined: 0.6, cool: 0.6,
-    focused: 0.3, wink: 0.2, winkR: 0.2, nervous: -0.2, worried: -0.3, sad: -0.3, teary: -0.4, derp: -0.3, tall: -0.3, listening: -0.3,
-    puppy: -1, adore: -1, love: -1, shy: -0.9, puffy: -0.9, plump: -0.9, meek: -0.8, sparkly: -0.8, happy: -0.7, beam: -0.7, softSmile: -0.6,
-    joy: -0.6, giggle: -0.6, starstruck: -0.6, tiny: -0.6, dilated: -0.6, content: -0.5, wonder: -0.5, wide: -0.5, bigL: -0.5, bigR: -0.5,
-    smallL: -0.4, smallR: -0.4 };
   // signature moves: each goober does one family of animations ~3× more often than others do
   const SIGNATURES = ['puppyEyes', 'oneEye', 'growLook', 'swellTilt', 'perk', 'pulse', 'squishy', 'nuzzle', 'bashful', 'lookTilt', 'curiousTilt', 'drift', 'sideEye', 'eyeRoll', 'hop', 'boing'];
   const idCheck = (p, c, e) => { let h = 0x811c9dc5; for (const w of [p, c, e]) for (let i = 0; i < 4; i++) { h ^= (w >>> (i * 8)) & 255; h = Math.imul(h, 0x01000193); } return ((h >>> 16) ^ (h & 0xffff) ^ 0x60b3) & 0xffff; };
-  // 25 personalities on a 5×5 grid. rows: very cute → very feisty, columns: very chill → very hyper. Each one is 1 in 25.
-  const PERSONALITIES = [
-    ['softie', 'snuggler', 'sweetie', 'sunbeam', 'sparkler'],
-    ['cozy', 'marshmallow', 'darling', 'bubbly', 'zoomie'],
-    ['sloth', 'mellow', 'easygoing', 'perky', 'bouncer'],
-    ['aloof', 'moody', 'cheeky', 'rascal', 'firecracker'],
-    ['diva', 'grouch', 'spicy', 'menace', 'gremlin'],
-  ];
-
   // build each mood's pools from the library
   for (const M of Object.values(MOODS)) {
     const okFace = (fc) => !fc || M.like.includes(fc) || M.react.includes(fc);
@@ -795,7 +784,7 @@
       this.s = { // critically damped: they arrive and stop, no bubbling
         x: Sp(0, 1.4, 1), y: Sp(0, 1.4, 1), ex: Sp(0, 1.1, 1), ey: Sp(0, 1.1, 1),
         sx: Sp(DEF.sx, 1.5, 0.95), sy: Sp(DEF.sy, 1.5, 0.95), bend: Sp(0, 1.5, 0.95), rot: Sp(0, 1.1, 1),
-        pu: Sp(0, 2, 1), pv: Sp(0.085, 2, 1), pr: Sp(0.45, 0.9, 1),
+        pu: Sp(0, 4.2, 0.72), pv: Sp(0.085, 4.2, 0.72), pr: Sp(0.45, 1.6, 0.9),
         heart: Sp(0, 1.1, 1), star: Sp(0, 1.1, 1), shut: Sp(0, 2, 1), arc: Sp(1, 1.6, 1), shine: Sp(DEF.shine, 0.8, 1), glow: Sp(DEF.glow, 0.6, 1), fill: Sp(1, 0.9, 0.75),
       };
       this.r = new Float32Array(N).fill(1); this.rv = new Float32Array(N); this.rt = new Float32Array(N).fill(1);
@@ -803,6 +792,7 @@
       this.blinkOK = 1; this.blinkUntil = -1; this.openUntil = -1; this.blinkSlow = 1;
       this.base = Object.assign({}, DEF);
       this.R = {}; this.pcx = 0; this.pcy = 0; this.vel = [0, 0];
+      this.gx = 0; this.gy = 0; this.mx = 0; this.my = 0; // this eye's own gaze target + micro-saccade offset (eyes aim independently)
     }
     wobble(amount) { const ph = rnd() * TAU; for (let i = 0; i < N; i++) this.rv[i] += amount * Math.cos(2 * ((i / N) * TAU) + ph); }
     stepRadii(dt, ax, ay, t) {
@@ -838,12 +828,14 @@
         pitch: Sp(0, 0.7, 0.85), spin: Sp(0, 0.65, 0.9), zoom: Sp(1, 0.7, 1),
       };
       this.F = {}; this.gaze = [0, 0]; this.pull = {};
+      this.att = { kind: 'idle', x: 0, y: 0, until: 0, pois: [], lastSac: 0, nextMicro: 0 }; // attention: what it is looking at
+      this.vor = { x: 0, y: 0, roll: 0, yaw: 0, pitch: 0 }; this.dil = new Spring(0, 1.4, 1); this.shrink = new Spring(0, 3.5, 1); this.startleUntil = 0;
       this.look = { type: 'round', swatch: 'goober' };
       this.force = { x: 0, y: 0 }; this.slosh = { x: 0, y: 0 };
       this.mode = 'awake';
-      this.pers = { col: 2, row: 2, x: 0, y: 0, kx: 1, ky: 1, pr: 0, tilt: 0, tempo: 1, blinkGap: 1, blinkSlow: 1, moodLen: 1, sacK: 1, dbl: 0.12 };
+      this.pers = { x: 0, y: 0, kx: 1, ky: 1, pr: 0, tilt: 0, tempo: 1, blinkGap: 1, blinkSlow: 1, moodLen: 1, sacK: 1, dbl: 0.12 };
       this.dna = { blinkRate: 8, blinkSpeed: 4, moodLen: 8, restless: 8, dbl: 4, salt: 0, batch: 0, fav: 0, sig: 0, eyeSize: 3, pupilSize: 3, serial: 0 };
-      this._rollDna(); this.rollPersonality(true);
+      this._rollDna(); this._derive();
       this.mood = this._pickMood(); this.moodUntil = rr(3600, 10800) * this.pers.moodLen;
       this.exprName = ''; this.expr = FACES.neutral;
       this.seq = null; this.seqI = 0; this.seqT = 0; this.locked = false; this.seqName = '';
@@ -916,27 +908,42 @@
       return P;
     }
     get doing() { return this.seq ? this.seqName : ''; }
+    // ── startup ("birth"), copied from the user's starboy power-on video (2026-11-10), same timings:
+    //   0–14 s a small dark dot wanders a pale screen, stretching as it moves · 14 s dark · 19 s a spark ·
+    //   20–28 s it grows into a wobbly blob with a soft halo, pinches and splits into two · 29 s they blink open as eyes ·
+    //   30–40 s a roulette of looks with sparkles · 40–47 s eyes closed · then it wakes up in its own look.
+    startup() {
+      const own = { type: this.look.type, swatch: this.look.swatch };
+      const dot = []; let x = 0, y = 0;
+      for (let k = 0; k < 13; k++) { const nx = rr(-0.6, 0.6), ny = rr(-0.55, 0.55); dot.push({ x0: x, y0: y, x1: nx, y1: ny, flat: rnd() < 0.25 }); x = nx; y = ny; }
+      this.boot = { t: 0, own, dot, rolled: -1 }; this.seq = null; this.locked = true; this.nextAct = this.t + 80; this.mode = 'awake'; this.parts = [];
+      this._emit('startup');
+    }
+    get booting() { return !!this.boot; }
+    _bootStep(dt) {
+      const B = this.boot; B.t += dt; const t = B.t;
+      if (t < 29) return;                                   // phases drawn by _drawBoot
+      if (t < 30.3) { if (!B.eyes) { B.eyes = 1; this._apply('asleep'); this.g.lidY.x = this.g.lidY.t; } if (t > 29.4 && B.eyes === 1) { B.eyes = 2; this._apply('neutral'); } return; }
+      if (t < 40) {                                         // the roulette: a new look every ~0.6 s, sparkles around
+        const k = Math.floor((t - 30.3) / 0.62);
+        if (k !== B.rolled) {
+          B.rolled = k; const T = Object.keys(TYPES), W = Object.keys(SWATCHES);
+          this.setLook(pick(T), pick(W)); this._apply(pick(['neutral', 'neutral', 'love', 'starstruck', 'angry', 'halfLid', 'joy', 'cool']));
+          for (let i = 0; i < 2; i++) this.spawn('spark', rr(30, 210), rr(40, 200), { s: rr(4, 7), life: 0.9, pop: 1, col: PAL.shine });
+        }
+        return;
+      }
+      if (t < 47) { if (!B.rest) { B.rest = 1; this.setLook(B.own.type, B.own.swatch); this._apply('asleep'); } return; }
+      this.boot = null; this.locked = false; this._apply('neutral'); this.blink(1); this.lastInput = this.t; this.nextSac = this.t + 0.5;
+      this._emit('born: ' + this.look.type + ' ' + this.look.swatch);
+    }
     preview(name, dur) { if (FACES[name]) { this.locked = false; this.play([{ e: name, d: dur }], name); this.locked = dur === Infinity; } }
     act(name) { if (ACTS[name]) { this.locked = false; if (this.mode === 'asleep') this.mode = 'awake'; this._act(name); } }
     unlock() { this.locked = false; this.seq = null; this._resetBall(); }
-    // ── personality: every goober is born somewhere on a 2D grid and keeps it for life.
-    //   a 5×5 grid: rows cute → feisty, columns chill → hyper (x, y = −1 … +1 in steps of 0.5)
-    //   It weights which moods come up, which animations/reactions it picks (cute faces vs attitude faces, calm vs wild),
-    //   how often it does things, and its resting eyes (cute: a bit bigger, bigger pupils, inner corners up;
-    //   feisty: a bit smaller, smaller pupils, inner corners down).
-    get personality() { const p = this.pers; return { col: p.col, row: p.row, x: p.x, y: p.y, name: PERSONALITIES[p.row][p.col] }; }
-    get personalityGrid() { return PERSONALITIES.map((r) => r.slice()); }
-    // setPersonality(col 0–4 chill→hyper, row 0–4 cute→feisty), or setPersonality('gremlin')
-    setPersonality(col, row, quiet) {
-      if (typeof col === 'string') { const r = PERSONALITIES.findIndex((rw) => rw.includes(col)); if (r < 0) return; row = r; col = PERSONALITIES[r].indexOf(col); }
-      this.pers.col = clamp(Math.round(+col || 0), 0, 4); this.pers.row = clamp(Math.round(+row || 0), 0, 4);
-      this._derive();
-      if (!quiet) { this._emit('personality → ' + PERSONALITIES[this.pers.row][this.pers.col]); this._apply(this.exprName); }
-    }
-    rollPersonality(quiet) { this.setPersonality(Math.floor(rnd() * 5), Math.floor(rnd() * 5), quiet); return this.personality; }
-    // the grid sets the broad strokes; the goober's own DNA bits fine-tune them (see the ID below)
+    // (the 25 personalities were removed 2026-11-10: one character; each goober only differs by its DNA bits below)
+    // the goober's own DNA bits fine-tune its blinks, gaze and eyes (see the ID below)
     _derive() {
-      const P = this.pers, D = this.dna, x = (P.col - 2) / 2, y = (P.row - 2) / 2;
+      const P = this.pers, D = this.dna, x = 0, y = 0;
       const eyeK = 1 + (D.eyeSize - 3) * 0.012;
       Object.assign(P, {
         x, y, kx: (1 - 0.03 * y) * eyeK, ky: (1 - 0.05 * y) * eyeK, pr: -0.035 * y + (D.pupilSize - 3) * 0.012, tilt: 0.04 * y,
@@ -953,7 +960,6 @@
       const P = this.pers, D = this.dna, M = Object.keys(MOODS);
       const word = (v, lo, hi, a, b, c) => (v < lo ? a : v > hi ? c : b);
       return {
-        personality: PERSONALITIES[P.row][P.col], col: P.col, row: P.row,
         blinkEvery: [2.5 * P.blinkGap, 6.5 * P.blinkGap], blinkLength: 0.17 * P.blinkSlow + 0.11 * P.blinkSlow + 0.5 * P.blinkSlow,
         blinks: word(P.blinkGap, 0.9, 1.15, 'blinks a lot', 'blinks normally', 'stares, blinks rarely'),
         blinkStyle: word(P.blinkSlow, 0.92, 1.1, 'quick, snappy blinks', 'easy blinks', 'slow, lazy blinks'),
@@ -963,15 +969,15 @@
         eyeSize: (D.eyeSize - 3) * 1.2, pupilSize: (D.pupilSize - 3) * 1.2,
       };
     }
-    // ── odds of this goober: the look, the look + personality, and every trait in the ID (not batch / serial / salt)
+    // ── odds of this goober: the look, and every trait in the ID (not batch / serial / salt)
     get odds() {
-      const look = this.lookOdds(this.look.type, this.look.swatch).chance, pers = 1 / 25;
+      const look = this.lookOdds(this.look.type, this.look.swatch).chance;
       const traits = { 'favourite mood': Object.keys(MOODS).length, 'signature move': SIGNATURES.length, 'blink rate': 16, 'blink speed': 8,
         'mood length': 16, gaze: 16, 'double blinks': 8, 'eye size': 8, 'pupil size': 8 };
       const rest = Object.values(traits).reduce((x, n) => x / n, 1);
-      return { look, personality: pers, lookPersonality: look * pers, traits, full: look * pers * rest };
+      return { look, traits, full: look * rest };
     }
-    // chance of each mood coming up next (every goober gets every mood; personality only tilts the odds)
+    // chance of each mood coming up next (every goober gets every mood; its favourite a bit more)
     moodChances(not) {
       const p = this.pers, fav = Object.keys(MOODS)[this.dna.fav % Object.keys(MOODS).length], names = Object.keys(MOODS).filter((m) => m !== not);
       const w = names.map((m) => { const a = MOOD_AT[m]; return (0.45 + Math.exp(-((a[0] - p.x) ** 2 + (a[1] - p.y) ** 2) / 0.9)) * (m === fav ? 1.8 : 1); });
@@ -979,7 +985,7 @@
     }
 
     // ── goober ID: goob-PPPPPPPP-CCCCCCCC-EEEEEEEE-KKKK (hex). Three 32-bit words + a 16-bit check.
-    //   P personality  bits 0–2 column (chill→hyper) · 3–5 row (cute→feisty) · 6–9 blink rate · 10–12 blink speed ·
+    //   P habits       bits 0–5 reserved (were the personality, removed 2026-11-10; old IDs still load) · 6–9 blink rate · 10–12 blink speed ·
     //                  13–16 mood length · 17–20 restlessness · 21–23 flutter (double blinks) · 24–31 salt
     //   C colour       bits 0–6 colourway (index in the colourway list) · 7–31 batch
     //   E everything else (not colour)  bits 0–1 eye type · 2–6 favourite mood · 7–10 signature move ·
@@ -987,26 +993,26 @@
     //   K check        FNV-1a of the 12 bytes, folded to 16 bits — catches typos
     get idParts() {
       const P = this.pers, D = this.dna;
-      const p = (P.col | (P.row << 3) | (D.blinkRate << 6) | (D.blinkSpeed << 10) | (D.moodLen << 13) | (D.restless << 17) | (D.dbl << 21) | (D.salt << 24)) >>> 0;
+      const p = ((D.blinkRate << 6) | (D.blinkSpeed << 10) | (D.moodLen << 13) | (D.restless << 17) | (D.dbl << 21) | (D.salt << 24)) >>> 0;
       const c = (Object.keys(SWATCHES).indexOf(this.look.swatch) | (D.batch << 7)) >>> 0;
       const e = (Object.keys(TYPES).indexOf(this.look.type) | (D.fav << 2) | (D.sig << 7) | (D.eyeSize << 11) | (D.pupilSize << 14) | (D.serial << 17)) >>> 0;
-      return { personality: p, colour: c, rest: e, check: idCheck(p, c, e) };
+      return { habits: p, colour: c, rest: e, check: idCheck(p, c, e) };
     }
-    get id() { const q = this.idParts, h = (v, n) => v.toString(16).padStart(n, '0'); return `goob-${h(q.personality, 8)}-${h(q.colour, 8)}-${h(q.rest, 8)}-${h(q.check, 4)}`; }
+    get id() { const q = this.idParts, h = (v, n) => v.toString(16).padStart(n, '0'); return `goob-${h(q.habits, 8)}-${h(q.colour, 8)}-${h(q.rest, 8)}-${h(q.check, 4)}`; }
     static parseId(str) {
       const m = /^\s*goob-([0-9a-f]{8})-([0-9a-f]{8})-([0-9a-f]{8})-([0-9a-f]{4})\s*$/i.exec(str || '');
       if (!m) return { ok: false, why: 'not a goober ID (goob-xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxx)' };
       const p = parseInt(m[1], 16) >>> 0, c = parseInt(m[2], 16) >>> 0, e = parseInt(m[3], 16) >>> 0;
       if (idCheck(p, c, e) !== parseInt(m[4], 16)) return { ok: false, why: 'check code doesn\'t match (typo?)' };
-      const col = p & 7, row = (p >>> 3) & 7, sw = c & 127, ty = e & 3, fav = (e >>> 2) & 31;
-      if (col > 4 || row > 4 || sw >= Object.keys(SWATCHES).length || fav >= Object.keys(MOODS).length) return { ok: false, why: 'made by a newer goober (unknown values)' };
-      return { ok: true, col, row, swatch: Object.keys(SWATCHES)[sw], type: Object.keys(TYPES)[ty], dna: {
+      const sw = c & 127, ty = e & 3, fav = (e >>> 2) & 31;
+      if (sw >= Object.keys(SWATCHES).length || fav >= Object.keys(MOODS).length) return { ok: false, why: 'made by a newer goober (unknown values)' };
+      return { ok: true, swatch: Object.keys(SWATCHES)[sw], type: Object.keys(TYPES)[ty], dna: {
         blinkRate: (p >>> 6) & 15, blinkSpeed: (p >>> 10) & 7, moodLen: (p >>> 13) & 15, restless: (p >>> 17) & 15, dbl: (p >>> 21) & 7, salt: p >>> 24,
         batch: c >>> 7, fav, sig: (e >>> 7) & 15, eyeSize: (e >>> 11) & 7, pupilSize: (e >>> 14) & 7, serial: e >>> 17 } };
     }
     setId(str) {
       const r = Goober.parseId(str); if (!r.ok) return r;
-      Object.assign(this.dna, r.dna); this.setLook(r.type, r.swatch); this.setPersonality(r.col, r.row, true);
+      Object.assign(this.dna, r.dna); this.setLook(r.type, r.swatch); this._derive();
       this.setMood(this._pickMood()); this._apply(this.exprName); this._emit('goober ' + this.id); return r;
     }
     _rollDna() {
@@ -1014,14 +1020,14 @@
       Object.assign(this.dna, { blinkRate: R(16), blinkSpeed: R(8), moodLen: R(16), restless: R(16), dbl: R(8), salt: R(256), batch: R(1 << 25),
         fav: R(Object.keys(MOODS).length), sig: R(SIGNATURES.length), eyeSize: R(8), pupilSize: R(8), serial: R(1 << 15) });
     }
-    // a brand-new goober: look by rarity, personality 1 in 25, the rest of its DNA at random
+    // a brand-new goober: look by rarity, the rest of its DNA at random
     rollGoober() {
-      this._rollDna(); this.rollLook(); this.rollPersonality(true); this.setMood(this._pickMood()); this._apply(this.exprName);
+      this._rollDna(); this._derive(); this.rollLook(); this.setMood(this._pickMood()); this._apply(this.exprName);
       return this.id;
     }
     _actWeight(n) {
-      const m = META[n] || {}, p = this.pers, sig = SIGNATURES[this.dna.sig % SIGNATURES.length];
-      return Math.exp(1.1 * p.y * (FEIST[m.face] || 0)) * Math.exp(0.8 * p.x * ((m.energy || 2) - 2)) * (n.startsWith(sig + '.') ? 3 : 1);
+      const sig = SIGNATURES[this.dna.sig % SIGNATURES.length];
+      return n.startsWith(sig + '.') ? 3 : 1;
     }
     _pickAct(list) {
       if (!list || !list.length) return 'greet';
@@ -1047,7 +1053,7 @@
       }
     }
     get moodPull() { return Object.assign({}, this.pull); }
-    setMood(name) { if (!MOODS[name]) return; this.mood = name; this.moodUntil = this.t + rr(3600, 10800) * this.pers.moodLen; this.idleFace = null; this.idleFaceUntil = this.t + rr(20, 40); this.nextAct = this.t + rr(6, 12); this._emit('mood → ' + name); }
+    setMood(name) { if (!MOODS[name]) return; this.mood = name; this.moodUntil = this.t + rr(3600, 10800) * this.pers.moodLen; this.idleFace = null; this.idleFaceUntil = this.t + rr(20, 40); this.nextAct = this.t + rr(15, 30); this._emit('mood → ' + name); }
     after(sec, fn) { this._tm.push({ at: this.t + sec, fn }); }
 
     // ── body helpers the animations use
@@ -1162,16 +1168,21 @@
       input = input || {};
       if (this.t >= this.moodUntil) this.setMood(this._pickMood(this.mood));
       { const k = Math.exp(-dt / 600); for (const m in this.pull) { this.pull[m] *= k; if (this.pull[m] < 0.02) delete this.pull[m]; } }
+      if (this.boot) this._bootStep(dt);
       this._button(!!input.btn);
       this._imu(input.imu || { x: 0, y: -1, z: 0 }, dt);
       this._senses(input, dt);
+      this._vestibular(input.gyro, dt);
+      this.shrink.t = this.t < this.startleUntil ? 1 : 0;
       this._brain();
+      this._attend(input, dt);
       this._behaviour(dt);
       this._particles(dt);
       const n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;
       for (let k = 0; k < n; k++) {
         for (const e of this.eyes) { for (const key in e.s) e.s[key].step(h); e.stepRadii(h, this.slosh.x, this.slosh.y, this.t); }
         for (const key in this.g) this.g[key].step(h, key === 'ox' ? this.force.x : key === 'oy' ? this.force.y : 0);
+        this.dil.step(h); this.shrink.step(h);
       }
       const G = this.g;
       G.ox.x = clamp(G.ox.x, -36, 36); G.oy.x = clamp(G.oy.x, -36, 36);
@@ -1184,7 +1195,7 @@
       for (const e of this.eyes) this._resolve(e, dt);
       this._powerPlan(dt);
       const F = this.F;
-      F.y = G.lidY.x + this.floatY; F.k = G.lidK.x / 10000; F.sk = G.lidS.x / 100; F.on = G.lidY.x > -100;
+      F.y = G.lidY.x + this.floatY + REST_Y; F.k = G.lidK.x / 10000; F.sk = G.lidS.x / 100; F.on = G.lidY.x > -100;
     }
 
     // ── one button: tap / double tap / hold
@@ -1244,7 +1255,7 @@
       this.force.x = -dx * 2600 * sway; this.force.y = -dy * 2600 * sway;
       this.slosh.x = clamp(dx * sway, -3, 3); this.slosh.y = clamp(dy * sway, -3, 3);
       const gx = -I.lp.x, gy = -I.lp.y;
-      if (Math.hypot(gx, gy) > 0.35) this.g.tilt.t = clamp(-Math.atan2(gx, gy) * 0.85, -1.25, 1.25); else this.g.tilt.t *= 0.98;
+      if (Math.hypot(gx, gy) > 0.35) this.g.tilt.t = clamp(-Math.atan2(gx, gy), -1.4, 1.4);   // 1:1 against the device's roll else this.g.tilt.t *= 0.98;
       if (dyn > 0.15) this.lastInput = t;
       if (this.locked) return;
       if (mag < 0.35) { I.ffT += dt; if (I.ffT > 0.12 && !I.falling) { I.falling = true; I.fallT0 = t; this.btn.taps = 0; I.carryT = 0; this._emit('wheee (free fall)'); this.seq = null; this._resetBall(); } }
@@ -1353,12 +1364,13 @@
 
     // ── what to do right now
     _brain() {
+      if (this.boot) return;                                // the startup sequence sets the faces itself
       const t = this.t, M = MOODS[this.mood], idle = t - this.lastInput;
       if (this.seq) {
         const st = this.seq[this.seqI];
         if (t - this.seqT >= st.d) {
           this.seqI++; this.seqT = t;
-          if (this.seqI >= this.seq.length) { this.seq = null; this.locked = false; this._resetBall(); this.nextAct = t + rr(M.every[0], M.every[1]) * this.pers.tempo; }
+          if (this.seqI >= this.seq.length) { this.seq = null; this.locked = false; this._resetBall(); this.nextAct = t + rr(M.every[0], M.every[1]) * 3 * this.pers.tempo; }   // ×3 (2026-11-10): the gaze engine is the idle life, preset animations are the spice
           else this._startStep(this.seq[this.seqI]);
         }
       }
@@ -1384,30 +1396,91 @@
       if (face !== this.exprName || this._reapply) { this._reapply = false; this._apply(face); }
     }
 
-    // eyes move together; big moves usually happen through a blink (like the reference)
-    _setGaze(x, y, blinkChance) {
+    // ── gaze (rewritten 2026-11-10, after the user's Lark videos): the PUPILS do most of the looking — fast, slightly
+    //    overshooting jumps, each eye aiming on its own (its own small error, a few ms behind the other, its own micro-
+    //    saccades) — while the face card follows about half way, so the eyes also slide across the screen.
+    //    Big jumps sometimes go through a blink.
+    _setGaze(x, y, blinkChance, opts) {
+      opts = opts || {};
       const dist = Math.hypot(x - this.gaze[0], y - this.gaze[1]);
-      this.gaze = [x, y];
-      if (dist > 0.5 && rnd() < (blinkChance === undefined ? 0.65 : blinkChance)) this.blink(1);
-      for (const e of this.eyes) {
-        e.s.x.t = x; e.s.y.t = y;
-        e.s.pu.t = e.base.pu + (e.pinT ?? e.base.pin) * e.inner + x * 0.08; e.s.pv.t = (e.pvT ?? e.base.pv) + y * 0.07; // the card turns; pupils barely move on their own
+      this.gaze = [x, y]; this.att.lastSac = this.t;
+      if (!opts.pursuit && dist > 0.6 && rnd() < (blinkChance === undefined ? 0.35 : blinkChance)) this.blink(1);
+      const together = !!this.expr.look;                  // faces with a fixed look keep the eyes locked together
+      const lead = rnd() < 0.5 ? 0 : 1, CARD = 0.9;
+      this.eyes.forEach((e, i) => {
+        const err = together || opts.pursuit ? 0 : 1;
+        const jx = err * rr(-0.06, 0.06) * (0.5 + dist), jy = err * rr(-0.05, 0.05) * (0.5 + dist);
+        const go = () => { e.s.x.t = x * CARD; e.s.y.t = y * CARD; e.gx = x + jx; e.gy = y + jy; };
+        if (i === lead || opts.pursuit || together) go(); else this.after(rr(0.012, 0.045), go);
+      });
+    }
+
+    // what to look at next: a moving thing beats a face beats its own points of interest
+    _attend(input, dt) {
+      const A = this.att, t = this.t, E = this.sense, M = MOODS[this.mood], mo = input.motion;
+      const busy = this.seq && this.seq[this.seqI] && this.seq[this.seqI].look;
+      if (this.mode !== 'awake' || busy || this.expr.look) return;
+      if (mo && mo.amount > 0.15) {                      // movement in view: snap to it, then follow it smoothly
+        const mx = clamp(mo.x, -1, 1) * 0.95, my = clamp(mo.y, -1, 1) * 0.8;
+        if (A.kind !== 'motion' || Math.hypot(mx - this.gaze[0], my - this.gaze[1]) > 0.35) {
+          if (t - A.lastSac > 0.12) { this._setGaze(mx, my, 0); this.dil.t = 0.05; }
+        } else this._setGaze(lerp(this.gaze[0], mx, Math.min(1, dt * 6)), lerp(this.gaze[1], my, Math.min(1, dt * 6)), 0, { pursuit: true });
+        A.kind = 'motion'; A.until = t + rr(0.8, 1.6); this.lastInput = t; this.nextSac = t + rr(0.8, 1.5); return;
       }
+      if (A.kind === 'motion' && t < A.until) return;     // keeps watching where it went for a moment
+      if (E.seen && t < E.attnUntil) {                   // a face: look at it, follow it, little glances
+        const fx = clamp(E.seen.x, -0.9, 0.9) * 0.85, fy = clamp(E.seen.y, -0.8, 0.8) * 0.7;
+        if (A.kind !== 'face' || Math.hypot(fx - this.gaze[0], fy - this.gaze[1]) > 0.25) this._setGaze(fx, fy, 0.2);
+        else this._setGaze(lerp(this.gaze[0], fx, Math.min(1, dt * 3)), lerp(this.gaze[1], fy, Math.min(1, dt * 3)), 0, { pursuit: true });
+        A.kind = 'face'; this.dil.t = 0.07; this.nextSac = t + rr(1.2, 3); return;
+      }
+      if (A.kind !== 'idle') { A.kind = 'idle'; this.dil.t = 0; this.nextSac = Math.min(this.nextSac, t + rr(0.2, 0.6)); }
+      if (t >= this.nextSac) {                            // idle: a few favourite spots it keeps coming back to, plus new ones
+        if (!A.pois.length || rnd() < 0.25) { A.pois.push([rr(-0.85, 0.85), rr(-0.6, 0.55)]); if (A.pois.length > 4) A.pois.shift(); }
+        const r = rnd();
+        if (r < 0.3) this._setGaze(clamp(this.gaze[0] + rr(-0.2, 0.2), -0.9, 0.9), clamp(this.gaze[1] + rr(-0.15, 0.15), -0.7, 0.6));
+        else if (r < 0.85) { const p = pick(A.pois); this._setGaze(p[0] + rr(-0.05, 0.05), p[1] + rr(-0.05, 0.05)); }
+        else { const back = this.gaze.slice(); this._setGaze(rr(-0.9, 0.9), rr(-0.6, 0.5)); this.after(rr(0.35, 0.7), () => { if (this.att.kind === 'idle' && !this.seq) this._setGaze(back[0], back[1], 0); }); } // a quick glance and back
+        this.nextSac = t + (rr(0.7, 2.6) / M.sac) * this.pers.tempo * this.pers.sacK;
+      }
+      if (t >= A.nextMicro) {                             // micro-saccades: each eye on its own, tiny
+        for (const e of this.eyes) { e.mx = rr(-0.035, 0.035); e.my = rr(-0.03, 0.03); }
+        A.nextMicro = t + rr(0.25, 0.9);
+        if (rnd() < 0.06) { const e = pick(this.eyes); e.mx = rr(-0.18, 0.18); e.my = rr(-0.12, 0.12); } // now and then one eye wanders a bit on its own
+      }
+    }
+
+    // turning the device (gyro, rad/s, screen axes): the eyes keep looking at the world — the pupils swing against the
+    // turn and the face rolls against it, then both settle back; a fast whip shrinks the pupils to dots
+    _vestibular(gyro, dt) {
+      const V = this.vor, k = Math.exp(-dt / 0.45);
+      const gx = gyro ? gyro.x || 0 : 0, gy = gyro ? gyro.y || 0 : 0, gz = gyro ? gyro.z || 0 : 0;
+      V.x = clamp(V.x * k - gy * dt * 1.6, -0.8, 0.8); V.y = clamp(V.y * k + gx * dt * 1.6, -0.6, 0.6);
+      // the face plane is world-stable: its turn is the exact REVERSE of the device's turn (the gyro integrated into an
+      // angle, 1:1, then fading back over ~1 s; that also cancels gyro drift). Roll comes from gravity (g.tilt, 1:1). Capped at ±0.8 rad: past
+      // that the face would go edge-on.
+      V.roll = 0;
+      const kw = Math.exp(-dt / 1.0);                     // then it fades back to facing the screen over ~1 s
+      V.dy = (V.dy || 0) * kw + gy * dt; V.dp = (V.dp || 0) * kw + gx * dt;   // device yaw / pitch since it was last at rest
+      V.yaw = clamp(V.dy * YAW_SIGN, -0.8, 0.8); V.pitch = clamp(V.dp * PITCH_SIGN, -0.8, 0.8);
+      const rate = Math.hypot(gx, gy, gz);
+      if (rate > 6 && this.mode === 'awake') { this.startleUntil = this.t + 0.9; this.lastInput = this.t; }
     }
 
     _behaviour(dt) {
       const t = this.t, X = this.expr, fx = X.fx || [], M = MOODS[this.mood], E = this.sense;
       const step = this.seq && this.seq[this.seqI];
       if (step && step.look) { if (this.gaze[0] !== step.look[0] || this.gaze[1] !== step.look[1]) this._setGaze(step.look[0], step.look[1], step.blink ? 0 : 0.4); this.nextSac = t + 1; }
-      else if (t >= this.nextSac) {
+      else if (t >= this.nextSac && (X.look || this.mode === 'asleep')) {
         if (X.look) { this._setGaze(X.look[0], X.look[1]); this.nextSac = t + rr(3, 6); }
-        else if (this.mode === 'asleep') { this._setGaze(0, 0, 0); this.nextSac = t + 3; }
-        else if (E.seen && !this.seq && t < E.attnUntil) { this._setGaze(clamp(E.seen.x, -0.9, 0.9) * 0.85, clamp(E.seen.y, -0.8, 0.8) * 0.7, 0.3); this.nextSac = t + rr(0.6, 1.2); }
-        else {
-          if (rnd() < 0.55) this._setGaze(rr(-0.18, 0.18), rr(-0.12, 0.12));
-          else this._setGaze(rr(-0.8, 0.8), rr(-0.5, 0.45));
-          this.nextSac = t + (rr(2, 6) / M.sac) * this.pers.tempo * this.pers.sacK;
-        }
+        else { this._setGaze(0, 0, 0); this.nextSac = t + 3; }
+      }
+      // every frame: each pupil heads for its own eye's gaze + micro-saccade + the counter-turn from the gyro
+      const PU = 0.35, PV = 0.3, V = this.vor;
+      for (const e of this.eyes) {
+        const toNose = (e.pinT ?? e.base.pin) * e.inner * (X.look ? 1 : 1 - 0.6 * Math.min(1, Math.abs(e.gx)));   // the nose-ward rest offset fades on side looks so both pupils travel together
+        e.s.pu.t = e.base.pu + toNose + (e.gx + e.mx + V.x) * PU;
+        e.s.pv.t = (e.pvT ?? e.base.pv) + (e.gy + e.my + V.y) * PV;
       }
       if (!this.seq && this.mode === 'awake' && t >= (this.nextFidget || 0)) this._fidget();
       const slow = (fx.includes('slowblink') ? 1.6 : 1) * (this.mode === 'awake' ? M.blink : 1);
@@ -1462,15 +1535,17 @@
       const gx = clamp(s0.x.x + noise(t * 0.22 + 3) * 0.04 * drift, -1.4, 1.4), gy = clamp(s0.y.x + noise(t * 0.19 + 17) * 0.04 * drift, -1.4, 1.4);
       // never quite still: the whole face slowly drifts and rolls a few degrees (as in the reference recording)
       const dY = noise(t * 0.16 + 5) * 0.07 * drift, dP = noise(t * 0.13 + 11) * 0.05 * drift, dR = noise(t * 0.14 + 23) * 0.06 * drift;
-      const yaw = -(gx * 0.62 + G.spin.x) + dY, pitch = gy * 0.45 - G.pitch.x * 0.8 + dP;
+      // looking turns the whole face card in 3D (prominent, user 2026-11-10), and the card stays put in the WORLD when the
+      // device is turned (vor.yaw / vor.pitch from the gyro): the screen turns, the face keeps facing you, then eases back
+      const yaw = -(gx * 0.85 + G.spin.x) + dY + this.vor.yaw, pitch = gy * 0.65 - G.pitch.x * 0.8 + dP + this.vor.pitch;
       const cY = Math.cos(yaw), sY = Math.sin(yaw), cP = Math.cos(pitch), sP = Math.sin(pitch);
       P.ax = cY; P.ay = 0; P.az = -sY;                    // card's x axis in the world
       P.bx = sY * sP; P.by = cP; P.bz = cY * sP;          // card's y axis
       P.nx = cP * sY; P.ny = -sP; P.nz = cY * cP;         // card's normal
       P.D = 300; P.f = 300; P.np0 = P.D * P.nz;           // camera distance = focal length → no scaling when facing us
       P.zoom = G.zoom.x;
-      P.tx = gx * 16; P.ty = gy * 12 + 140 * Math.sin(G.pitch.x);
-      const roll = G.tilt.x + G.rotAll.x + gx * 0.06 + dR;
+      P.tx = gx * 12; P.ty = gy * 10 + 140 * Math.sin(G.pitch.x);   // looking is mainly a 3D TURN plus a small slide toward the look (user 2026-11-10)
+      const roll = G.tilt.x + G.rotAll.x + gx * 0.06 + dR + this.vor.roll;
       P.cr = Math.cos(roll); P.sr = Math.sin(roll);
       P.ox = MID + G.ox.x; P.oy = MID + G.oy.x;
       P.vis = P.nz > 0.08;
@@ -1486,6 +1561,8 @@
       let sy = s.sy.x * (1 - hold * 0.45) * (1 + breath * (asleep ? 0.05 : 0.006));
       if (sy < 0.12) sy = 0.06 + 0.06 * Math.exp((sy - 0.12) / 0.06);
       let sx = s.sx.x * (1 + hold * 0.08);
+      // each eye breathes in size on its own, and the eye on the side it looks toward swells a little
+      { const own = 1 + 0.03 * noise(t * 0.23 + e.ph + 5) + 0.05 * clamp(this.gaze[0] * side, 0, 1); sx *= own; sy *= 1 + 0.035 * noise(t * 0.21 + e.ph + 11) + 0.04 * clamp(this.gaze[0] * side, 0, 1); }
       sx *= 1 + 0.08 * (1 - clamp(sy, 0, 1.4));
       // the float: the whole face bobs up and down in a slow sine, all the time (measured from the site recording:
       // period 2.85 s, ±6.1 px at 240 px, no sideways part, no size change); half as much while asleep
@@ -1500,7 +1577,7 @@
       if (fx.includes('sway') || t < (this.grooveUntil || 0)) { ex += Math.sin(t * 2.2) * 5; rot += Math.sin(t * 2.2) * 0.05; ey -= Math.abs(Math.cos(t * 2.2)) * 2; }
       if (fx.includes('orbit')) { const o = t * 3.5 + (side > 0 ? Math.PI : 0); ex += Math.cos(o) * 7; ey += Math.sin(o) * 5; rot += Math.sin(t * 2.5) * 0.15; }
       const bend = s.bend.x + hold * 0.22;
-      R.pcx = side * SPACING + ex; R.pcy = ey;                     // eye centre on the card
+      R.pcx = side * SPACING + ex; R.pcy = ey + REST_Y;                     // eye centre on the card
       const sc0 = projectCard(P, R.pcx, R.pcy);
       const cx = sc0[0], cy = sc0[1];
       R.mag = sc0[2]; R.depth = -sc0[3]; R.vis = P.vis;
@@ -1508,8 +1585,10 @@
       e.pcx = cx; e.pcy = cy;
       const speed = Math.hypot(e.vel[0], e.vel[1]);
       R.st = Math.min(0.05, speed / 9000); R.sa = Math.atan2(e.vel[1], e.vel[0]);
-      R.cx = cx; R.cy = cy; R.rot = rot; R.ax = R0 * Math.max(sx, 0.03); R.ay = R0 * Math.max(sy, 0.02); R.bend = bend; R.side = side;
-      const pr = clamp(s.pr.x, 0.05, 0.9) * sstep(0.16, 0.4, sy) * (1 - sstep(0.8, 0.97, s.shut.x));
+      R.cx = cx; R.cy = cy; R.rot = rot + EYE_LEAN * side; R.ax = R0 * Math.max(sx, 0.03); R.ay = R0 * Math.max(sy * EYE_ASPECT, 0.02); R.bend = bend; R.side = side;
+      // pupil size: the face's size + interest (faces, movement) + each eye's own slow drift; a fright shrinks them to dots
+      const prLive = (s.pr.x + this.dil.x + 0.025 * noise(t * 0.3 + e.ph + 31)) * (1 - 0.68 * clamp(this.shrink.x, 0, 1));
+      const pr = clamp(prLive, 0.05, 0.9) * sstep(0.16, 0.4, sy) * (1 - sstep(0.8, 0.97, s.shut.x));
       let pu = s.pu.x, pv = s.pv.x; const m = Math.hypot(pu, pv), lim = 1 - pr * 0.2;
       if (m > lim) { pu *= lim / m; pv *= lim / m; }
       // parallax: the pupil sits ~PUPIL_DEPTH px *behind* the eye's surface, so when the face turns it travels a bit less
@@ -1529,10 +1608,49 @@
     // ───────────────────────────── render ─────────────────────────────
     render(buf, size) { // size: output pixels per side (default 240 = the real screen); everything is maths, so any size is crisp
       const W = size || SW;
+      if (this.boot && this.boot.t < 29) { drawBoot(buf, W, this.boot); return; }
       for (let i = 0; i < buf.length; i += 4) { buf[i] = 0; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 255; }
       const order = this.eyes[0].R.depth <= this.eyes[1].R.depth ? [0, 1] : [1, 0];
       for (const i of order) if (this.eyes[i].R.vis) drawEye(buf, this.eyes[i], this.F, W, this.P);
       for (const p of this.parts) drawPart(buf, p, W);
+    }
+  }
+
+  // startup phases before the eyes exist (see Goober.startup). Coordinates in 240-px screen units, centre 0.
+  function drawBoot(buf, W, B) {
+    const t = B.t, k = W / SW, ease = (u) => u * u * (3 - 2 * u);
+    let bg = [0, 0, 0], shapes = null;
+    if (t < 14) {                                           // a dark dot wandering a pale screen
+      const fade = t > 13.6 ? 1 - (t - 13.6) / 0.4 : 1;
+      bg = [Math.round(236 * fade), Math.round(212 * fade), Math.round(222 * fade)];
+      const i = Math.min(B.dot.length - 1, Math.floor(t)), f = t - Math.floor(t), d = B.dot[i], e = ease(Math.min(1, f / 0.7));
+      const x = lerp(d.x0, d.x1, e) * 100, y = lerp(d.y0, d.y1, e) * 100, sp = Math.sin(Math.PI * Math.min(1, f / 0.7));
+      let rx = 5 + sp * 5, ry = 5 - sp * 2.5; if (d.flat && f > 0.7) { rx = 9; ry = 1.4; }
+      if (t > 12.4) { const u = (t - 12.4) / 1.2; rx = ry = u < 0.6 ? 5 * (1 - u / 0.6) + 0.8 : 7 * Math.min(1, (u - 0.6) / 0.25); }
+      const a = Math.atan2(d.y1 - d.y0, d.x1 - d.x0);
+      shapes = (px, py) => { const c = Math.cos(a), s = Math.sin(a), u = (px - x) * c + (py - y) * s, v = -(px - x) * s + (py - y) * c; return (Math.hypot(u / rx, v / ry) - 1) * Math.min(rx, ry); };
+      fill(buf, W, k, bg, [20, 16, 20], shapes, null); return;
+    }
+    if (t < 19.5) {                                         // dark, then a tiny spark twinkles in the middle
+      if (t < 18.4) { fill(buf, W, k, bg, null, null, null); return; }
+      const tw = 1.2 + 1.4 * Math.abs(Math.sin((t - 18.4) * 7)), sp = (px, py) => sdStar5(px, py, tw * 1.6, tw * 0.5);
+      fill(buf, W, k, bg, [255, 250, 250], sp, null); return;
+    }
+    // a spark grows into a wobbly blob with a soft halo, pinches, splits in two and the halves slide to the eye spots
+    const g = Math.min(1, (t - 19.5) / 5.5), split = clamp((t - 25.3) / 3.2, 0, 1), r = 4 + ease(g) * 34;
+    const sep = ease(split) * SPACING, wob = (px, py, ph) => { const a = Math.atan2(py, px); return 1 + 0.12 * Math.sin(3 * a + t * 1.3 + ph) + 0.08 * Math.sin(5 * a - t * 1.7 + ph * 2); };
+    const one = (px, py, cx, ph, rr) => { const dx = px - cx, dy = py - REST_Y * split; return Math.hypot(dx, dy) - rr * wob(dx, dy, ph); };
+    shapes = (px, py) => { const rr = r * (1 - 0.25 * split); return smin(one(px, py, -sep, 0, rr), one(px, py, sep, 2, rr), Math.max(0.5, 26 * (1 - split))); };
+    const halo = (px, py) => shapes(px, py) - (10 + 14 * ease(g)) * (1 - split);
+    fill(buf, W, k, bg, [238, 222, 224], shapes, halo);
+  }
+  function fill(buf, W, k, bg, col, sdf, halo) {
+    for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) {
+      const o = (j * W + i) * 4, px = (i + 0.5) / k - MID, py = (j + 0.5) / k - MID;
+      let c0 = bg[0], c1 = bg[1], c2 = bg[2];
+      if (halo) { const h = halo(px, py); if (h < 1) { const a = 0.38 * clamp(0.5 - h / 2, 0, 1); c0 = lerp(c0, 120, a); c1 = lerp(c1, 112, a); c2 = lerp(c2, 114, a); } }
+      if (sdf && col) { const d = sdf(px, py) * k, a = clamp(0.5 - d, 0, 1); c0 = lerp(c0, col[0], a); c1 = lerp(c1, col[1], a); c2 = lerp(c2, col[2], a); }
+      buf[o] = c0; buf[o + 1] = c1; buf[o + 2] = c2; buf[o + 3] = 255;
     }
   }
 
@@ -1674,4 +1792,5 @@
 
   root.Goober = Goober;
   root.GOOBER_SIZE = SW;
+  root.__gooberSigns = (y, p) => { YAW_SIGN = y; PITCH_SIGN = p; };   // test hook (tools / sim checks)
 })(typeof window !== 'undefined' ? window : globalThis);

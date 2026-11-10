@@ -109,8 +109,7 @@ function buildMenu() {
   const check = (key, label, extra) => ({ label, type: 'checkbox', checked: !!S[key], click: (m) => { set({ [key]: m.checked }); if (extra) extra(m.checked); } });
   return Menu.buildFromTemplate([
     { label: 'goober ' + app.getVersion(), enabled: false },
-    ...(info ? [{ label: 'This goober: ' + info.personality, submenu: [
-      { label: 'Personality: ' + info.personality + ' (' + info.kind + ')', enabled: false },
+    ...(info ? [{ label: 'This goober', submenu: [
       { label: 'Eyes: ' + info.eyes + ' · colour: ' + info.colour, enabled: false },
       { label: 'Mood right now: ' + info.mood, enabled: false },
       { label: info.id, enabled: false }] }] : []),

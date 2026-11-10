@@ -27,7 +27,7 @@ const { chromium } = require('playwright');
   // pin mood + personality and switch off everything but the behaviour under test (so a dodge or a hop over to the
   // cursor can't move goober away mid-test)
   const ALL = ['pounce', 'approach', 'flee', 'nuzzle', 'steal'];
-  const setup = (mood, row, allow) => p.evaluate(([m, r, ok, all]) => { const g = window.__goober.g; g.setPersonality(3, r, true); g.setMood(m);
+  const setup = (mood, row, allow) => p.evaluate(([m, r, ok, all]) => { const g = window.__goober.g; g.setMood(m);
     const B = window.__goober.play.B; B.cd = {}; for (const k of all) if (ok.indexOf(k) < 0) B.cd[k] = 1e12; B.nextWhim = 1e9; }, [mood, row, allow || ALL, ALL]);
   await p.waitForTimeout(2500); await drain();
 
@@ -189,10 +189,10 @@ const { chromium } = require('playwright');
     console.log((ok ? 'ok   ' : 'MISS ') + 'throw keeps its speed'.padEnd(24), 'hand ≈ ' + Math.round(hand) + ' px/s, goober leaves at ' + Math.round(v) + ' px/s');
   }
 
-  // 10. hatching a new goober always changes its eyes (and rolls a new personality); the menu info follows
+  // 10. hatching a new goober always changes its eyes; the menu info follows
   {
     const seen = [];
-    for (let i = 0; i < 6; i++) { seen.push(await p.evaluate(() => { const G = window.__goober; G.hatch(); return G.g.look.type + '/' + G.g.personality.name + '/' + (window.__info && window.__info.eyes); })); await p.waitForTimeout(300); }
+    for (let i = 0; i < 6; i++) { seen.push(await p.evaluate(() => { const G = window.__goober; G.hatch(); return G.g.look.type + '/-/' + (window.__info && window.__info.eyes); })); await p.waitForTimeout(300); }
     const eyes = seen.map((x) => x.split('/')[0]), ok = eyes.every((e, i) => i === 0 || e !== eyes[i - 1]) && seen.every((x) => x.split('/')[0] === x.split('/')[2]);
     if (!ok) fails.push('hatch'); console.log((ok ? 'ok   ' : 'MISS ') + 'hatch changes it'.padEnd(24), seen.join(' → '));
   }

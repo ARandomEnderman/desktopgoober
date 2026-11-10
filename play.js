@@ -5,7 +5,7 @@
  *   by itself   hop chains, boings in place, big leaps across the screen (and onto the next screen)
  *   the mouse   hops over to the cursor, pounces on it when it sits still, boops it, runs away from fast swipes,
  *               nuzzles into it when you rub it over goober, and now and then grabs it and drags it off
- * How often depends on the mood and the personality (chill → hyper, cute → feisty).
+ * How often depends on the mood.
  */
 (function (root) {
   'use strict';
@@ -29,8 +29,8 @@
     const cd = (k, t) => { B.cd[k] = X.now() + t; };
     const ready = (k) => X.now() >= (B.cd[k] || 0);
     const say = (m) => { B.msg = m; if (root.__playLog) root.__playLog.push(m); };
-    const mood = () => g.mood, energy = () => (ENERGY[mood()] || 1) * (0.7 + 0.15 * g.personality.col);
-    const feisty = () => g.personality.row / 4;                // 0 very cute … 1 very feisty
+    const mood = () => g.mood, energy = () => (ENERGY[mood()] || 1);
+    const feisty = () => 0.5;                                  // one character now (the engine dropped personalities)
     const free = () => !g.doing;                               // don't talk over an animation the engine is playing
     const act = (n) => { if (g.actNames.indexOf(n) >= 0) g.act(n); };
 
